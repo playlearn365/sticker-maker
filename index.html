@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Line 貼圖自動化助手</title>
+  
+  <!-- 載入 Tailwind CSS (樣式) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- 載入 React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- 載入 Babel (用來讓瀏覽器看懂 React 語法) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- 載入 JSZip (打包下載功能) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  
+  <style>
+    /* 自訂動畫設定 */
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    .animate-spin { animation: spin 1s linear infinite; }
+    @keyframes bounce { 0%, 100% { transform: translateY(-25%); animation-timing-function: cubic-bezier(0.8,0,1,1); } 50% { transform: none; animation-timing-function: cubic-bezier(0,0,0.2,1); } }
+    .animate-bounce { animation: bounce 1s infinite; }
+  </style>
+</head>
+<body class="bg-[#fff5f7] text-rose-900 font-sans selection:bg-pink-300/30">
+  <div id="root"></div>
+
+  <!-- 核心程式碼區域 -->
+  <script type="text/babel">
+    const { useState, useRef } = React;
+
+    // --- 免套件內建 SVG 圖示 ---
+    const Icons = {
+      Upload: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>,
+      Copy: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
+      CheckCircle2: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>,
+      MessageSquare: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+      Star: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+      Edit3: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>,
+      ImageIcon: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>,
+      User: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+      ExternalLink: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>,
+      Scissors: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" x2="8.12" y1="4" y2="15.88"/><line x1="14.47" x2="20" y1="14.48" y2="20"/><line x1="8.12" x2="12" y1="8.12" y2="12"/></svg>,
+      Wand2: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>,
+      RefreshCcw: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>,
+      Tag: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>,
+      Download: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>,
+      Loader2: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
+      Info: ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    };
+    
+    const { Upload, Copy, CheckCircle2, MessageSquare, Star, Edit3, ImageIcon, User, ExternalLink, Scissors, Wand2, RefreshCcw, Tag, Download, Loader2, Info } = Icons;
+
+    // --- Data Constants ---
+    const CONTENT_MODES = [
+      { id: 'char_text', label: '主角 + 文字', icon: MessageSquare },
+      { id: 'char_only', label: '只要主角', icon: Star },
+      { id: 'text_only', label: '純文字大字', icon: Edit3 },
+    ];
+
+    const CHAR_SOURCES = [
+      { id: 'upload_ref', label: '參考上傳圖', icon: ImageIcon },
+      { id: 'custom_char', label: '自訂角色', icon: User },
+    ];
+
+    const SUBJECTS = [
+      '日常用語', '打招呼', '上班日常', '常見回應', '一個字', '導遊帶團', '團購專用', 
+      '超商社群', '情侶放閃', '萌寵生活', '家人互動篇', '股票菜籃族', '節日祝福', 
+      '春夏秋冬', '時間與計畫', '職場與金錢', '健康與狀態'
+    ];
+
+    const SUBJECT_CONTENT_MAP = {
+      '日常用語': '【早安、晚安、謝謝、不客氣、對不起、沒問題、好的、收到、拜託、辛苦了、OK、等等】',
+      '打招呼': '【Hello、Hi、早安、午安、晚安、你好、吃飽沒、好久不見、初次見面、歡迎、有空嗎、掰掰】',
+      '上班日常': '【收到、馬上改、開會中、加班、準時下班、心累、報告長官、救命、領薪水、加油】',
+      '常見回應': '【真的假的、笑死、確?、好喔、??、!!!、無言、傻眼、厲害、佩服、+1、路過】',
+      '一個字': '【讚、好、收、乖、安、蛤、嚇、愛、嘿、唷、嗯、喔、衝、忙、累、餓、渴、痛、鳴、耶】',
+      '導遊帶團': '【集合囉、看這邊、跟緊我、注意安全、自由時間、出發！、拍照囉、點名、上車、這必吃】',
+      '團購專用': '【我要+1、結單囉、已匯款、末五碼、面交、開團中、最後倒數、這超好用、缺貨中、許願】',
+      '超商社群': '【新品到貨、點數兌換、第二件六折、快閃優惠、友善食光、店取已到、熱賣中、報電話】',
+      '情侶放閃': '【想你了、愛你唷、我的寶、快回來、討抱抱、心動動、麼麼噠、最帥了、最正了、在幹嘛】',
+      '萌寵生活': '【喵~~、汪！、求罐罐、拆家中、不想動、討摸摸、肚子餓、已讀、不想理你、看什麼看】',
+      '家人互動篇': '【爸、媽、早點回家、吃飯沒、我出門了、注意安全、幫我買、晚點回、要不要吃、愛你們】',
+      '股票菜籃族': '【漲停板、跌停、加碼、停損、韭菜、上車、下車、護國神山、套牢、衝啊】',
+      '節日祝福': '【新年快樂、生日快樂、聖誕快樂、情人節快樂、中秋節快樂、母親節快樂、父親節快樂、萬聖節、恭喜發財、佳節愉快】',
+      '春夏秋冬': '【好熱、冷死我了、春天來了、賞楓去、穿暖一點、防曬、流汗、下雪了、梅雨季、秋高氣爽】',
+      '時間與計畫': '【幾點、快到了、遲到了、等我一下、明天見、改天約、行程表、排休、放假囉、倒數中】',
+      '職場與金錢': '【報銷、發票、預算、績效、獎金、發大財、窮到吃土、請客、AA制、月底吃土】',
+      '健康與狀態': '【感冒了、頭痛、多喝水、早點睡、失眠、精神百倍、運動去、減肥中、好累、生病了】'
+    };
+
+    const STYLES = [
+      '可愛 Q 版', '照片級寫實', '3D 公仔', '扁平插畫', '童書繪本', '童趣手繪', 
+      '日系 Chibi', '清新水彩', '古風水墨', '復古像素', '吉卜力風'
+    ];
+
+    const App = () => {
+      // --- States ---
+      const [activeTab, setActiveTab] = useState('generator');
+      const [selections, setSelections] = useState({
+        contentMode: 'char_text',
+        charSource: 'upload_ref',
+        subject: '日常用語',
+        style: '可愛 Q 版'
+      });
+      const [copied, setCopied] = useState(false);
+      
+      // File Upload & Image Processing States
+      const [isDragging, setIsDragging] = useState(false);
+      const [fileName, setFileName] = useState('');
+      const [previewUrl, setPreviewUrl] = useState(null);
+      const [isSliced, setIsSliced] = useState(false);
+      const [sliceConfig, setSliceConfig] = useState({ x: 0, y: 0, scale: 100 });
+      const [bgMode, setBgMode] = useState('mode1');
+      
+      const [isProcessing, setIsProcessing] = useState(false);
+      const [processedImages, setProcessedImages] = useState([]);
+      const [mainIndex, setMainIndex] = useState(null);
+      const [tabIndex, setTabIndex] = useState(null);
+      const [isDownloading, setIsDownloading] = useState(false);
+      const [startNumber, setStartNumber] = useState(1);
+
+      const fileInputRef = useRef(null);
+
+      // --- Handlers ---
+      const handleSelect = (category, value) => {
+        setSelections(prev => ({ ...prev, [category]: value }));
+      };
+
+      const handleDragOver = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+      };
+      
+      const handleDragLeave = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+      };
+      
+      const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          loadFile(e.dataTransfer.files[0]);
+        }
+      };
+
+      const handleFileChange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          loadFile(e.target.files[0]);
+        }
+      };
+
+      const loadFile = (file) => {
+        setFileName(file.name);
+        setPreviewUrl(URL.createObjectURL(file));
+        setIsSliced(false);
+        setProcessedImages([]);
+      };
+
+      const handleReset = () => {
+        setPreviewUrl(null);
+        setFileName('');
+        setIsSliced(false);
+        setProcessedImages([]);
+        setSliceConfig({ x: 0, y: 0, scale: 100 });
+        setStartNumber(1);
+        setMainIndex(null);
+        setTabIndex(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      };
+
+      // 處理 ZIP 打包下載
+      const handleDownloadZip = async () => {
+        if (processedImages.length === 0) return;
+        try {
+          setIsDownloading(true);
+          
+          const zip = new window.JSZip();
+          const start = parseInt(startNumber) || 1;
+
+          // 將圖片縮放至 LINE 官方規範尺寸
+          const resizeImage = (dataUrl, targetW, targetH) => {
+            return new Promise((resolve) => {
+              const img = new window.Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = targetW;
+                canvas.height = targetH;
+                const ctx = canvas.getContext('2d');
+                
+                // 保持比例置中縮放
+                const scale = Math.min(targetW / img.width, targetH / img.height);
+                const nw = img.width * scale;
+                const nh = img.height * scale;
+                const nx = (targetW - nw) / 2;
+                const ny = (targetH - nh) / 2;
+                
+                ctx.drawImage(img, nx, ny, nw, nh);
+                resolve(canvas.toDataURL('image/png').split(',')[1]);
+              };
+              img.src = dataUrl;
+            });
+          };
+
+          // 寫入 20 張主貼圖
+          processedImages.forEach((dataUrl, index) => {
+            const base64Data = dataUrl.split(',')[1];
+            const fileName = `${String(start + index).padStart(2, '0')}.png`;
+            zip.file(fileName, base64Data, { base64: true });
+          });
+
+          // 寫入 Main 與 Tab 封圖
+          if (mainIndex !== null && processedImages[mainIndex]) {
+            const mainB64 = await resizeImage(processedImages[mainIndex], 240, 240);
+            zip.file('main.png', mainB64, { base64: true });
+          }
+          if (tabIndex !== null && processedImages[tabIndex]) {
+            const tabB64 = await resizeImage(processedImages[tabIndex], 96, 74);
+            zip.file('tab.png', tabB64, { base64: true });
+          }
+
+          // 產生 ZIP
+          const content = await zip.generateAsync({ type: 'blob' });
+          const url = URL.createObjectURL(content);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'LineStickers_Pack.zip';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (error) {
+          console.error("打包失敗:", error);
+          alert("打包過程發生錯誤，請稍後再試。");
+        } finally {
+          setIsDownloading(false);
+        }
+      };
+
+      // 核心演算法：無誤差 Canvas 切割與綠幕去背
+      const processImages = async () => {
+        if (!previewUrl) return;
+        setIsProcessing(true);
+
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.src = previewUrl;
+
+        await new Promise(resolve => { img.onload = resolve; });
+
+        const results = [];
+        const sliceWidth = 512;
+        const sliceHeight = 416;
+        const originalW = 2560;
+        const originalH = 1664;
+
+        for (let i = 0; i < 20; i++) {
+          if (i % 5 === 0) await new Promise(r => setTimeout(r, 10));
+
+          const canvas = document.createElement('canvas');
+          canvas.width = sliceWidth;
+          canvas.height = sliceHeight;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+          const col = i % 5;
+          const row = Math.floor(i / 5);
+
+          // 完美數學對位：先將 Canvas 原點移至該切片的起始位置
+          ctx.translate(-col * sliceWidth, -row * sliceHeight);
+
+          // 接著套用使用者設定的全域平移與縮放 (相對於 2560x1664 的中心點)
+          const transX = (sliceConfig.x / 100) * originalW;
+          const transY = (sliceConfig.y / 100) * originalH;
+
+          ctx.translate(originalW / 2 + transX, originalH / 2 + transY);
+          ctx.scale(sliceConfig.scale / 100, sliceConfig.scale / 100);
+          ctx.translate(-originalW / 2, -originalH / 2);
+
+          // 繪製原始圖片
+          ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, originalW, originalH);
+
+          // 去背演算法 (Chroma Key)
+          const imageData = ctx.getImageData(0, 0, sliceWidth, sliceHeight);
+          const data = imageData.data;
+          
+          for (let p = 0; p < data.length; p += 4) {
+            const r = data[p];
+            const g = data[p + 1];
+            const b = data[p + 2];
+
+            if (bgMode === 'mode1') {
+              // 模式 1：完全去背 (大範圍清除所有偏綠像素)
+              if (g > 100 && g > r * 1.2 && g > b * 1.2) data[p + 3] = 0;
+            } else {
+              // 模式 2：極度嚴格的保留文字判定 (升級版)
+              // 只有在 G 極度接近 255，且 R 與 B 極低的時候才剔除，完美保護淺綠色字體
+              if (g > 190 && r < 65 && b < 65) data[p + 3] = 0;
+            }
+          }
+          ctx.putImageData(imageData, 0, 0);
+
+          // --- 最終轉換：加入 LINE 官方安全邊距 (370x320 畫布，預留 10px 外距) ---
+          const finalCanvas = document.createElement('canvas');
+          finalCanvas.width = 370;
+          finalCanvas.height = 320;
+          const fCtx = finalCanvas.getContext('2d');
+          
+          // 安全區縮小為 350x300，確保邊緣不會切齊
+          const safeW = 350;
+          const safeH = 300;
+          const scaleToFit = Math.min(safeW / sliceWidth, safeH / sliceHeight);
+          const finalW = sliceWidth * scaleToFit;
+          const finalH = sliceHeight * scaleToFit;
+          const finalX = (370 - finalW) / 2;
+          const finalY = (320 - finalH) / 2;
+          
+          fCtx.drawImage(canvas, finalX, finalY, finalW, finalH);
+          results.push(finalCanvas.toDataURL('image/png'));
+        }
+
+        setProcessedImages(results);
+        setIsProcessing(false);
+      };
+
+      // Generate Prompt Data
+      const getPromptData = () => [
+        {
+          title: '[佈局與對位設定]',
+          items: [
+            { label: '畫幅設定', value: '2560 × 1664 px', suffix: ' (強制橫向矩形畫幅)。', type: 'blue' },
+            { label: '佈局結構', value: '精確佈局為 4 橫排 (Rows) × 5 直欄 (Columns)，共 20 格。', type: 'blue' },
+            { label: '強制中心', value: '主角必須位於每格 (512x416 px) 的精確物理中心。', type: 'blue' },
+            { label: '留邊規範', value: '主體內容最大化，但必須與邊界保留至少 20px 安全邊距，避免裁切。', type: 'blue' }
+          ]
+        },
+        {
+          title: '[嚴格禁忌]',
+          items: [
+            { label: '無物理格線', value: '絕對禁止出現任何單元格框線、分隔線或格線。', type: 'blue' },
+            { label: '背景色', value: '背景必須為 100% 純淨綠幕 (#00FF00)，禁止任何陰影、漸層或發光。', type: 'blue' },
+            { value: '1. 每一組貼圖內不能有重複的用語', type: 'blue' },
+            { value: '2. 每一個貼圖用語務必呼應表情，不可以有不吻合的狀態', type: 'blue' },
+            { value: '3. 確保貼圖用語內，不能有【 】的符號', type: 'blue' },
+            { value: '4. 貼圖文字不可使用任何表情符號', type: 'blue' },
+            { value: '5. [文字色彩規範] 請將文字設計為色彩繽紛、柔美且溫暖的風格，採用「安全暖色譜」進行漸層混合。嚴格禁用所有綠色、青色或藍綠色調，並避免使用純黑色，以確保能與亮綠色背景 (#00FF00) 完美分離。', type: 'blue' }
+          ]
+        },
+        {
+          title: '[視覺設計規範]',
+          items: [
+            { label: '雙層描邊', value: '主角與文字外圍需具備「細薄黑邊內層」+「厚度適中圓滑白色外框」。', type: 'blue' },
+            { label: '排版比例', value: '文字佔比 40%、主角佔比 60%，文字不可遮臉。', type: 'blue' },
+            { label: '字型風格', value: `【${selections.style} Pop Art 字型】`, type: 'orange' }
+          ]
+        },
+        {
+          title: '[創意修改區]',
+          items: [
+            { label: '主題內容', value: SUBJECT_CONTENT_MAP[selections.subject] || `【以「${selections.subject}」為主】`, type: 'orange' },
+            { label: '表情參考', value: '【喜、怒、哀、樂、驚訝、無語、放空、崩潰、害羞、自信、睡著、被嚇到...】', type: 'orange' },
+            { label: '畫風選擇', value: `【${selections.style}：可愛、活潑、2D 平面貼紙風格】`, type: 'orange' }
+          ]
+        },
+        {
+          title: '[輸出格式總結]',
+          items: [
+            { label: '格式明細', value: '一張 2560x1664 大圖，共 20 個貼圖，背景 #00FF00，無格線。確保文字顏色不含綠色', type: 'blue' }
+          ]
+        }
+      ];
+
+      const handleCopy = () => {
+        const data = getPromptData();
+        let textToCopy = '請參考設定生成一張包含 20 個不同內容的貼圖集，也不要使用任何emoji表情符號。\n\n';
+        data.forEach(section => {
+          textToCopy += `${section.title}\n`;
+          section.items.forEach(item => {
+            if (item.label) {
+              textToCopy += `• ${item.label}：${item.value}${item.suffix || ''}\n`;
+            } else {
+              textToCopy += `• ${item.value}\n`;
+            }
+          });
+          textToCopy += '\n';
+        });
+
+        const textArea = document.createElement("textarea");
+        textArea.value = textToCopy;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+          if (document.execCommand('copy')) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }
+        } catch (err) {
+          console.error('複製發生錯誤:', err);
+        }
+        
+        document.body.removeChild(textArea);
+      };
+
+      // --- Components ---
+      const StepIndicator = () => (
+        <div className="flex items-center space-x-4 text-sm font-medium">
+          <div className="flex items-center space-x-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-pink-500 text-white shadow-sm">1</span>
+            <span className="text-pink-900 font-bold">上傳與分割</span>
+          </div>
+          <div className="h-px w-8 bg-pink-200"></div>
+          <div className="flex items-center space-x-2 text-pink-400">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-pink-100 text-pink-500">2</span>
+            <span>去背</span>
+          </div>
+          <div className="h-px w-8 bg-pink-200"></div>
+          <div className="flex items-center space-x-2 text-pink-400">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-pink-100 text-pink-500">3</span>
+            <span>打包</span>
+          </div>
+        </div>
+      );
+
+      return (
+        <div className="min-h-screen bg-[#fff5f7] text-rose-900 font-sans selection:bg-pink-300/30">
+          
+          <header className="border-b border-pink-200 bg-white/70 backdrop-blur-md sticky top-0 z-10">
+            <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="bg-pink-400 p-1.5 rounded-lg shadow-sm shadow-pink-200">
+                  <MessageSquare className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold tracking-wide text-rose-800">Line 貼圖自動化助手</h1>
+                </div>
+              </div>
+              <StepIndicator />
+            </div>
+          </header>
+
+          <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+            
+            {/* Toggle View */}
+            <div className="flex justify-center mb-8">
+              <div className="bg-pink-100 p-1 rounded-lg inline-flex shadow-inner">
+                <button 
+                  onClick={() => setActiveTab('generator')}
+                  className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'generator' ? 'bg-pink-500 text-white shadow-md shadow-pink-200' : 'text-pink-600 hover:text-pink-800'}`}
+                >
+                  AI 提示詞大師 (Step 1)
+                </button>
+                <button 
+                  onClick={() => setActiveTab('uploader')}
+                  className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'uploader' ? 'bg-pink-500 text-white shadow-md shadow-pink-200' : 'text-pink-600 hover:text-pink-800'}`}
+                >
+                  貼圖處理與上傳 (Step 2)
+                </button>
+              </div>
+            </div>
+
+            {/* =========================================
+                VIEW 1: PROMPT GENERATOR
+                ========================================= */}
+            {activeTab === 'generator' && (
+              <div className="space-y-6">
+                {/* Configuration Panel */}
+                <div className="bg-white rounded-xl border border-pink-100 p-6 shadow-xl shadow-pink-100/50">
+                  <h2 className="text-xl font-bold text-rose-800 flex items-center mb-8">
+                    <Edit3 className="w-5 h-5 mr-2 text-pink-500" />
+                    AI 提示詞大師
+                  </h2>
+
+                  <div className="space-y-8">
+                    {/* 1. 內容模式選擇 */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-rose-700 mb-4">1. 內容模式選擇：</h3>
+                      <div className="flex flex-wrap gap-3">
+                        {CONTENT_MODES.map(mode => (
+                          <button
+                            key={mode.id}
+                            onClick={() => handleSelect('contentMode', mode.id)}
+                            className={`flex items-center px-4 py-2 rounded-md transition-all duration-200 border 
+                              ${selections.contentMode === mode.id 
+                                ? 'bg-pink-500 text-white border-transparent shadow-md shadow-pink-200 text-xs font-bold transform scale-105' 
+                                : 'bg-pink-50/50 text-pink-600 border-pink-200 hover:bg-pink-100 hover:text-pink-800 text-xs font-medium'
+                              }`}
+                          >
+                            <mode.icon className="w-4 h-4 mr-2" />
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-pink-100 w-full" />
+
+                    {/* 2. 設定角色來源 */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-rose-700 mb-4">2. 設定角色來源：</h3>
+                      <div className="flex flex-wrap gap-3">
+                        {CHAR_SOURCES.map(source => (
+                          <button
+                            key={source.id}
+                            onClick={() => handleSelect('charSource', source.id)}
+                            className={`flex items-center px-4 py-2 rounded-md transition-all duration-200 border 
+                              ${selections.charSource === source.id 
+                                ? 'bg-pink-500 text-white border-transparent shadow-md shadow-pink-200 text-xs font-bold transform scale-105' 
+                                : 'bg-pink-50/50 text-pink-600 border-pink-200 hover:bg-pink-100 hover:text-pink-800 text-xs font-medium'
+                              }`}
+                          >
+                            {selections.charSource === source.id && <CheckCircle2 className="w-4 h-4 mr-2" />}
+                            {source.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-pink-100 w-full" />
+
+                    {/* 3. 選擇主題內容 */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-rose-700 mb-4">3. 選擇主題內容：</h3>
+                      <div className="flex flex-wrap gap-2.5">
+                        {SUBJECTS.map(sub => (
+                          <button
+                            key={sub}
+                            onClick={() => handleSelect('subject', sub)}
+                            className={`px-4 py-2 rounded-md transition-all duration-200 border 
+                              ${selections.subject === sub 
+                                ? 'bg-pink-500 text-white border-transparent shadow-md shadow-pink-200 text-xs font-bold transform scale-105' 
+                                : 'bg-pink-50/50 text-pink-600 border-pink-200 hover:bg-pink-100 hover:text-pink-800 text-xs font-medium'
+                              }`}
+                          >
+                            {sub}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-pink-100 w-full" />
+
+                    {/* 4. 選擇畫風 */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-rose-700 mb-4">4. 選擇畫風：</h3>
+                      <div className="flex flex-wrap gap-2.5">
+                        {STYLES.map(style => (
+                          <button
+                            key={style}
+                            onClick={() => handleSelect('style', style)}
+                            className={`px-4 py-2 rounded-md transition-all duration-200 border 
+                              ${selections.style === style 
+                                ? 'bg-pink-500 text-white border-transparent shadow-md shadow-pink-200 text-xs font-bold transform scale-105' 
+                                : 'bg-pink-50/50 text-pink-600 border-pink-200 hover:bg-pink-100 hover:text-pink-800 text-xs font-medium'
+                              }`}
+                          >
+                            {style}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Prompt Output Panel */}
+                <div className="bg-white rounded-xl border border-pink-100 overflow-hidden shadow-xl shadow-pink-100/50">
+                  <div className="bg-pink-50/80 px-6 py-4 border-b border-pink-100 flex justify-between items-center">
+                    <div className="flex items-center space-x-3">
+                      <div className="bg-pink-400 rounded p-1 shadow-sm">
+                        <CheckCircle2 className="w-5 h-5 text-white" />
+                      </div>
+                      <h2 className="text-lg font-bold text-rose-800">20 格貼圖集 | Prompt 建議 (5x4)</h2>
+                    </div>
+                  </div>
+                  
+                  <div className="p-6">
+                    <div className="bg-[#fff5f7] p-6 rounded-lg font-sans text-sm leading-relaxed text-rose-800 border border-pink-100 overflow-y-auto max-h-[550px] space-y-6 shadow-inner">
+                      <p className="text-rose-600 mb-2 font-medium">請參考設定生成一張包含 20 個不同內容的貼圖集，也不要使用任何emoji表情符號。</p>
+                      
+                      {getPromptData().map((section, sIdx) => (
+                        <div key={sIdx}>
+                          <h3 className="text-rose-900 font-bold text-base mb-3 tracking-wide">{section.title}</h3>
+                          <ul className="space-y-2.5 list-disc list-outside ml-5 text-rose-700">
+                            {section.items.map((item, iIdx) => (
+                              <li key={iIdx} className="pl-1">
+                                {item.label && <span className="text-rose-800 font-medium">{item.label}：</span>}
+                                <span className={`inline-block px-1.5 py-0.5 rounded font-bold transition-all duration-300 ${
+                                  item.type === 'blue' 
+                                    ? 'bg-rose-100 text-rose-700' 
+                                    : 'bg-pink-200 text-pink-800 shadow-sm'
+                                }`}>
+                                  {item.value}
+                                </span>
+                                {item.suffix && <span className="text-rose-600">{item.suffix}</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-6 flex justify-end space-x-4">
+                      <a 
+                        href="https://gemini.google.com/app" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex items-center px-6 py-2.5 bg-pink-500 hover:bg-pink-600 text-white rounded-lg font-bold transition-colors shadow-md shadow-pink-200"
+                      >
+                        前往 Gemini
+                        <ExternalLink className="w-4 h-4 ml-2" />
+                      </a>
+                      <button 
+                        onClick={handleCopy}
+                        className="flex items-center px-6 py-2.5 bg-white border border-pink-200 hover:bg-pink-50 text-rose-800 rounded-lg font-bold transition-all active:scale-95 shadow-sm"
+                      >
+                        {copied ? (
+                          <><CheckCircle2 className="w-5 h-5 mr-2 text-pink-600" /> 已複製！</>
+                        ) : (
+                          <><Copy className="w-5 h-5 mr-2 text-pink-500" /> 複製 5x4 貼圖 Prompt</>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* =========================================
+                VIEW 2: FILE UPLOADER & PROCESSING
+                ========================================= */}
+            {activeTab === 'uploader' && (
+              <div>
+                {/* 狀態一：尚未上傳任何檔案 */}
+                {!previewUrl && processedImages.length === 0 && (
+                  <div className="bg-white rounded-xl border border-pink-100 p-8 md:p-12 flex flex-col items-center justify-center min-h-[500px] shadow-xl shadow-pink-100/50 max-w-4xl mx-auto">
+                    <h2 className="text-2xl font-bold text-rose-800 mb-8">上傳您的貼圖原始檔</h2>
+                    
+                    <div className="bg-pink-50/50 border border-pink-100 rounded-xl p-6 w-full mb-8">
+                      <h3 className="text-pink-600 font-bold mb-4 underline underline-offset-4 decoration-pink-300">圖片需要符合以下規格：</h3>
+                      <ul className="space-y-3 text-sm text-rose-700 leading-relaxed font-medium">
+                        <li>(1) 佈局：整體為 <span className="text-pink-700 font-bold">5 欄 × 4 列</span>，共 20 張貼圖。</li>
+                        <li>(2) 尺寸：總尺寸強烈建議為 <span className="text-pink-700 font-mono bg-pink-100 px-1.5 py-0.5 rounded font-bold">2560 × 1664 px</span>。</li>
+                      </ul>
+                    </div>
+
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={`border-2 border-dashed rounded-xl w-full h-64 flex flex-col items-center justify-center transition-all cursor-pointer group 
+                        ${isDragging ? 'border-pink-500 bg-pink-100 scale-[1.02]' : 'border-pink-300 bg-pink-50/30 hover:bg-pink-50 hover:border-pink-400'}`}
+                    >
+                      <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} accept="image/jpeg, image/png, image/webp" />
+                      <div className={`bg-pink-100 p-4 rounded-xl mb-4 transition-colors ${isDragging ? 'bg-pink-200' : 'group-hover:bg-pink-200'}`}>
+                        <Upload className={`w-8 h-8 ${isDragging ? 'text-pink-600 animate-bounce' : 'text-pink-500'}`} />
+                      </div>
+                      <button className="bg-pink-500 text-white px-6 py-2.5 rounded-full font-bold hover:bg-pink-600 transition-colors shadow-lg shadow-pink-200 pointer-events-none">
+                        選擇檔案
+                      </button>
+                      <p className="mt-4 text-sm text-pink-400 font-medium">或將檔案拖曳至此</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* 狀態二：已上傳，準備切割與去背 (深色工作區風格) */}
+                {previewUrl && !isSliced && processedImages.length === 0 && (
+                  <div className="bg-[#1e293b] rounded-xl border border-slate-700/50 p-6 md:p-10 shadow-xl max-w-5xl mx-auto">
+                    <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-xl font-bold text-white">準備切割貼圖</h2>
+                      <button onClick={handleReset} className="text-sm text-slate-400 hover:text-white font-bold flex items-center transition-colors">
+                        <RefreshCcw className="w-4 h-4 mr-1" /> 重新選擇
+                      </button>
+                    </div>
+                    
+                    {/* 精準鎖定 2560/1664 的長寬比容器，確保 WYSIWYG */}
+                    <div 
+                      className="relative w-full max-w-4xl mx-auto overflow-hidden bg-[#0f172a] rounded-lg border-2 border-slate-800/50 shadow-inner" 
+                      style={{ aspectRatio: '2560/1664' }}
+                    >
+                      <img 
+                        src={previewUrl} 
+                        style={{ 
+                          transform: `translate(${sliceConfig.x}%, ${sliceConfig.y}%) scale(${sliceConfig.scale/100})`,
+                          transformOrigin: 'center',
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'fill'
+                        }} 
+                        className="absolute inset-0 pointer-events-none transition-transform duration-100 ease-out" 
+                        alt="貼圖預覽"
+                      />
+                      {/* 高可視性切割線 */}
+                      <div className="absolute inset-0 grid grid-cols-5 grid-rows-4 pointer-events-none border border-emerald-500/80">
+                        {Array.from({ length: 20 }).map((_, i) => (
+                          <div key={i} className="border border-dashed border-emerald-500/80 box-border"></div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-6 text-center text-emerald-400 text-sm font-bold">
+                      ☝️ 請注意檢查「綠色虛線」：如果在預覽中文字被切到，切割出來就會被切到，請利用下方滑桿微調！
+                    </div>
+
+                    {/* Slicing Controls */}
+                    <div className="mt-6 bg-[#0f172a] p-6 rounded-xl border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6">
+                      <div className="flex-1 w-full space-y-2">
+                        <div className="flex justify-between text-xs font-bold text-slate-400"><span>水平平移 (X)</span><span>{sliceConfig.x}%</span></div>
+                        <input type="range" min="-100" max="100" value={sliceConfig.x} onChange={(e) => setSliceConfig({...sliceConfig, x: Number(e.target.value)})} className="w-full accent-emerald-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                      </div>
+                      <div className="flex-1 w-full space-y-2">
+                        <div className="flex justify-between text-xs font-bold text-slate-400"><span>垂直平移 (Y)</span><span>{sliceConfig.y}%</span></div>
+                        <input type="range" min="-100" max="100" value={sliceConfig.y} onChange={(e) => setSliceConfig({...sliceConfig, y: Number(e.target.value)})} className="w-full accent-emerald-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                      </div>
+                      <div className="flex-1 w-full space-y-2">
+                        <div className="flex justify-between text-xs font-bold text-slate-400"><span>整體縮放尺寸</span><span>{sliceConfig.scale}%</span></div>
+                        <input type="range" min="10" max="200" value={sliceConfig.scale} onChange={(e) => setSliceConfig({...sliceConfig, scale: Number(e.target.value)})} className="w-full accent-emerald-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
+                      </div>
+                    </div>
+
+                    <div className="mt-8 flex justify-center">
+                      <button onClick={() => setIsSliced(true)} className="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-3.5 rounded-xl font-bold text-lg flex items-center shadow-lg shadow-emerald-500/20 transition-all active:scale-95">
+                        <Scissors className="w-6 h-6 mr-2" /> 開始切割 (20格)
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 狀態三：預覽切割並設定去背模式 */}
+                {isSliced && processedImages.length === 0 && (
+                  <div className="bg-[#1e293b] rounded-xl border border-slate-700/50 p-6 md:p-8 shadow-xl max-w-5xl mx-auto">
+                    <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-xl font-bold text-white flex items-center">
+                        <CheckCircle2 className="w-6 h-6 mr-2 text-emerald-400" /> 切割完成，請設定去背模式
+                      </h2>
+                    </div>
+
+                    {/* Sliced Preview Grid - 修正連動演算法 */}
+                    <div className="grid grid-cols-5 gap-2 md:gap-3 bg-[#0f172a] p-4 md:p-6 rounded-xl border border-slate-800 shadow-inner max-h-[500px] overflow-y-auto">
+                      {Array.from({ length: 20 }).map((_, i) => {
+                        const col = i % 5;
+                        const row = Math.floor(i / 5);
+                        return (
+                          <div key={i} className="aspect-[512/416] w-full rounded border border-slate-700/50 overflow-hidden bg-slate-800 relative">
+                            {/* Wrapper Div 負責擷取特定儲存格位置 */}
+                            <div style={{
+                              position: 'absolute',
+                              width: '500%',
+                              height: '400%',
+                              left: `-${col * 100}%`,
+                              top: `-${row * 100}%`
+                            }}>
+                              <img
+                                src={previewUrl}
+                                className="w-full h-full object-fill pointer-events-none"
+                                style={{
+                                  transform: `translate(${sliceConfig.x}%, ${sliceConfig.y}%) scale(${sliceConfig.scale/100})`,
+                                  transformOrigin: 'center'
+                                }}
+                                alt={`切片-${i}`}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* BG Mode Selector */}
+                    <div className="mt-8 bg-[#0f172a] p-6 rounded-xl border border-slate-800 text-slate-200 shadow-inner">
+                      <div className="text-center font-bold text-white mb-6 tracking-wide text-sm">去背模式選擇：</div>
+                      <div className="flex flex-col md:flex-row gap-4 max-w-2xl mx-auto">
+                        <button onClick={() => setBgMode('mode1')} className={`flex-1 p-5 rounded-xl font-bold flex flex-col items-center justify-center transition-all ${bgMode === 'mode1' ? 'bg-[#ef4444] text-white shadow-lg shadow-red-500/30 scale-105 border-2 border-red-400' : 'bg-[#1e293b] text-slate-400 border border-slate-700 hover:bg-slate-800'}`}>
+                            <span className="text-base tracking-wide">模式 1: 完全去背</span>
+                            <span className="text-xs font-medium mt-1.5 opacity-90">移除所有綠色</span>
+                        </button>
+                        <button onClick={() => setBgMode('mode2')} className={`flex-1 p-5 rounded-xl font-bold flex flex-col items-center justify-center transition-all ${bgMode === 'mode2' ? 'bg-[#334155] text-white shadow-lg shadow-slate-900/50 scale-105 border-2 border-slate-400' : 'bg-[#1e293b] text-slate-400 border border-slate-700 hover:bg-slate-800'}`}>
+                            <span className="text-base tracking-wide">模式 2: 保留文字</span>
+                            <span className="text-xs font-medium mt-1.5 opacity-90">極度嚴格保留淺綠色字體</span>
+                        </button>
+                      </div>
+                      <div className="text-xs text-slate-400 mt-6 text-center flex items-center justify-center">
+                        <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-500 flex-shrink-0" />
+                        {bgMode === 'mode1' ? '√ 完全移除所有綠色背景 (文字內的淺綠色也會被清除)' : '√ 智能嚴格對比純綠色，完美保護圖案中的淺綠色字體不被吃掉'}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="mt-8 flex justify-center gap-4">
+                      <button onClick={handleReset} className="px-8 py-3.5 rounded-xl font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors">
+                          重新上傳
+                      </button>
+                      <button 
+                        onClick={processImages} 
+                        disabled={isProcessing}
+                        className="px-10 py-3.5 rounded-xl font-bold text-white bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 transition-transform active:scale-95 flex items-center disabled:opacity-50 disabled:active:scale-100"
+                      >
+                        {isProcessing ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Wand2 className="w-5 h-5 mr-2" />}
+                        {isProcessing ? '正在執行像素去背...' : '執行去背處理'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 狀態四：最終去背成果與標籤設定 */}
+                {processedImages.length > 0 && (
+                  <div className="bg-[#1e293b] rounded-xl border border-slate-700/50 p-6 md:p-8 shadow-xl max-w-6xl mx-auto">
+                    <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-xl font-bold text-white flex items-center">
+                        <Wand2 className="w-6 h-6 mr-2 text-emerald-400" /> 去背完成，請選擇封面與分頁圖
+                      </h2>
+                      <button onClick={handleReset} className="text-sm text-slate-400 hover:text-white font-bold flex items-center transition-colors">
+                        <RefreshCcw className="w-4 h-4 mr-1" /> 重做
+                      </button>
+                    </div>
+
+                    {/* Final Download Panel */}
+                    <div className="mb-8 pb-8 border-b border-slate-700">
+                      <h3 className="text-xl font-bold text-white mb-6 flex items-center">
+                        <CheckCircle2 className="w-6 h-6 mr-2 text-emerald-400" /> 設定與打包下載
+                      </h3>
+                      <div className="flex flex-col lg:flex-row gap-6 items-stretch">
+                        
+                        {/* Info Box */}
+                        <div className="flex-1 bg-slate-800/50 border border-yellow-500/30 rounded-xl p-6 shadow-inner flex flex-col justify-center">
+                          <div className="flex items-center text-yellow-500 font-bold mb-3 text-lg">
+                            <Info className="w-5 h-5 mr-2" /> 下載前注意事項：
+                          </div>
+                          <ul className="text-sm text-slate-300 space-y-3 list-disc ml-6 leading-relaxed">
+                            <li>選擇 <span className="text-white font-bold border-b border-slate-500 pb-0.5">main / tab 封面圖</span>：點擊貼圖下方的按鈕設定。</li>
+                            <li>設定 <span className="text-white font-bold border-b border-slate-500 pb-0.5">起始編號</span>：如生第二組，請將起始編號改為 21。</li>
+                            <li className="text-emerald-400 font-medium mt-2">✨ 系統會自動將所有圖檔調整為 LINE 官方規範尺寸 (預留了 10px 安全邊距，不貼齊邊緣)。</li>
+                          </ul>
+                        </div>
+
+                        {/* Action Panel */}
+                        <div className="flex flex-col sm:flex-row gap-4">
+                          <div className="bg-[#0f172a] border border-slate-700 rounded-xl p-4 flex flex-col justify-center w-full sm:w-32 shadow-inner">
+                            <label className="text-xs font-bold text-slate-400 mb-2"># 起始編號</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={startNumber}
+                              onChange={(e) => setStartNumber(e.target.value)}
+                              className="w-full bg-[#1e293b] text-white border border-slate-600 rounded-lg px-3 py-2 text-center font-bold outline-none focus:border-emerald-500 transition-colors"
+                            />
+                          </div>
+                          <button 
+                            onClick={handleDownloadZip}
+                            disabled={isDownloading}
+                            className="px-8 py-4 h-full rounded-xl font-bold text-white bg-[#10b981] hover:bg-[#059669] shadow-lg shadow-emerald-500/20 transition-transform active:scale-95 flex items-center justify-center text-lg disabled:opacity-70 disabled:active:scale-100 whitespace-nowrap"
+                          >
+                            {isDownloading ? <Loader2 className="w-6 h-6 mr-2 animate-spin" /> : <Download className="w-6 h-6 mr-2" />}
+                            {isDownloading ? '打包中...' : '下載完整 ZIP'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                      {processedImages.map((src, i) => (
+                        <div key={i} className="bg-[#0f172a] rounded-lg p-3 border border-slate-800 flex flex-col group hover:border-slate-600 transition-colors">
+                          
+                          {/* Transparent Canvas Container */}
+                          <div 
+                            className="w-full aspect-[370/320] rounded overflow-hidden relative border border-slate-800/50"
+                            style={{
+                              backgroundImage: `linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%)`,
+                              backgroundSize: '16px 16px',
+                              backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+                              backgroundColor: '#0f172a'
+                            }}
+                          >
+                            <img src={src} className="w-full h-full object-contain" alt={`sticker-${i+1}`} />
+                          </div>
+
+                          {/* File Name */}
+                          <div className="text-center text-[11px] font-mono font-medium text-slate-400 my-2 bg-slate-800/80 py-1.5 rounded-md mx-1">
+                            {String((parseInt(startNumber) || 1) + i).padStart(2, '0')}.png
+                          </div>
+
+                          {/* Config Buttons */}
+                          <div className="flex gap-1.5 mt-auto">
+                            <button
+                              onClick={() => setMainIndex(mainIndex === i ? null : i)}
+                              className={`flex-1 flex flex-col sm:flex-row items-center justify-center py-2 rounded text-[10px] font-bold transition-all ${
+                                mainIndex === i
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
+                                  : 'bg-slate-800 text-slate-500 border border-slate-700 hover:bg-slate-700 hover:text-slate-300'
+                              }`}
+                            >
+                              <Star className={`w-3.5 h-3.5 sm:mr-1 mb-1 sm:mb-0 ${mainIndex === i ? 'fill-emerald-400' : ''}`} /> Main
+                            </button>
+                            <button
+                              onClick={() => setTabIndex(tabIndex === i ? null : i)}
+                              className={`flex-1 flex flex-col sm:flex-row items-center justify-center py-2 rounded text-[10px] font-bold transition-all ${
+                                tabIndex === i
+                                  ? 'bg-blue-500/20 text-blue-400 border border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
+                                  : 'bg-slate-800 text-slate-500 border border-slate-700 hover:bg-slate-700 hover:text-slate-300'
+                              }`}
+                            >
+                              <Tag className={`w-3.5 h-3.5 sm:mr-1 mb-1 sm:mb-0 ${tabIndex === i ? 'fill-blue-400' : ''}`} /> Tab
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+          </main>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
