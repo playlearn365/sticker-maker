@@ -327,7 +327,7 @@
         setIsProcessing(false);
       };
 
-      // Generate Prompt Data
+      // Generate Prompt Data (更新了字體顏色的嚴格定義與避讓綠色規則)
       const getPromptData = () => [
         {
           title: '[佈局與對位設定]',
@@ -346,8 +346,16 @@
             { value: '1. 每一組貼圖內不能有重複的用語', type: 'blue' },
             { value: '2. 每一個貼圖用語務必呼應表情，不可以有不吻合的狀態', type: 'blue' },
             { value: '3. 確保貼圖用語內，不能有【 】的符號', type: 'blue' },
-            { value: '4. 貼圖文字不可使用任何表情符號', type: 'blue' },
-            { value: '5. [文字色彩規範] 請將文字設計為色彩繽紛、柔美且溫暖的風格，採用「安全暖色譜」進行漸層混合。嚴格禁用所有綠色、青色或藍綠色調，並避免使用純黑色，以確保能與亮綠色背景 (#00FF00) 完美分離。', type: 'blue' }
+            { value: '4. 貼圖文字不可使用任何表情符號', type: 'blue' }
+          ]
+        },
+        {
+          title: '[文字色彩與避讓規範 (極重要)]',
+          items: [
+            { label: '色彩原則', value: '必須使用高飽和度、鮮豔奪目的 Pop Art 風格色彩。', type: 'orange' },
+            { label: '多變隨機', value: '20 個貼圖的文字顏色必須「完全不同且隨機」，呈現萬花筒般的多彩視覺。允許單色或鮮豔漸層。', type: 'orange' },
+            { label: '色彩範圍', value: '可包含亮桃紅、電光藍、鮮橙色、亮紫色、蒂芬妮藍、火焰紅、檸檬黃（非綠色調的黃）等。', type: 'orange' },
+            { label: '強制禁忌', value: '文字主體絕對禁止使用任何形式的綠色（含亮綠、深綠、螢光綠等），確保不與綠幕背景重疊。', type: 'orange' }
           ]
         },
         {
@@ -595,7 +603,7 @@
                                 <span className={`inline-block px-1.5 py-0.5 rounded font-bold transition-all duration-300 ${
                                   item.type === 'blue' 
                                     ? 'bg-rose-100 text-rose-700' 
-                                    : 'bg-pink-200 text-pink-800 shadow-sm'
+                                    : 'bg-orange-100 text-orange-700 shadow-sm border border-orange-200'
                                 }`}>
                                   {item.value}
                                 </span>
