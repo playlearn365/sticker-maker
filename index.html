@@ -8,12 +8,10 @@
   <!-- 載入 Tailwind CSS (樣式) -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- 載入 React & ReactDOM -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  
-  <!-- 載入 Babel (用來讓瀏覽器看懂 React 語法) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- 換用 cdnjs 穩定版 CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   
   <!-- 載入 JSZip (打包下載功能) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -327,7 +325,7 @@
         setIsProcessing(false);
       };
 
-      // Generate Prompt Data (更新了字體顏色的嚴格定義與避讓綠色規則)
+      // Generate Prompt Data
       const getPromptData = () => [
         {
           title: '[佈局與對位設定]',
@@ -679,7 +677,7 @@
                   </div>
                 )}
 
-                {/* 狀態二：已上傳，準備切割與去背 (深色工作區風格) */}
+                {/* 狀態二：已上傳，準備切割與去背 */}
                 {previewUrl && !isSliced && processedImages.length === 0 && (
                   <div className="bg-[#1e293b] rounded-xl border border-slate-700/50 p-6 md:p-10 shadow-xl max-w-5xl mx-auto">
                     <div className="flex justify-between items-center mb-6">
@@ -689,7 +687,6 @@
                       </button>
                     </div>
                     
-                    {/* 精準鎖定 2560/1664 的長寬比容器，確保 WYSIWYG */}
                     <div 
                       className="relative w-full max-w-4xl mx-auto overflow-hidden bg-[#0f172a] rounded-lg border-2 border-slate-800/50 shadow-inner" 
                       style={{ aspectRatio: '2560/1664' }}
@@ -706,7 +703,6 @@
                         className="absolute inset-0 pointer-events-none transition-transform duration-100 ease-out" 
                         alt="貼圖預覽"
                       />
-                      {/* 高可視性切割線 */}
                       <div className="absolute inset-0 grid grid-cols-5 grid-rows-4 pointer-events-none border border-emerald-500/80">
                         {Array.from({ length: 20 }).map((_, i) => (
                           <div key={i} className="border border-dashed border-emerald-500/80 box-border"></div>
@@ -718,7 +714,6 @@
                       ☝️ 請注意檢查「綠色虛線」：如果在預覽中文字被切到，切割出來就會被切到，請利用下方滑桿微調！
                     </div>
 
-                    {/* Slicing Controls */}
                     <div className="mt-6 bg-[#0f172a] p-6 rounded-xl border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6">
                       <div className="flex-1 w-full space-y-2">
                         <div className="flex justify-between text-xs font-bold text-slate-400"><span>水平平移 (X)</span><span>{sliceConfig.x}%</span></div>
@@ -751,14 +746,12 @@
                       </h2>
                     </div>
 
-                    {/* Sliced Preview Grid - 修正連動演算法 */}
                     <div className="grid grid-cols-5 gap-2 md:gap-3 bg-[#0f172a] p-4 md:p-6 rounded-xl border border-slate-800 shadow-inner max-h-[500px] overflow-y-auto">
                       {Array.from({ length: 20 }).map((_, i) => {
                         const col = i % 5;
                         const row = Math.floor(i / 5);
                         return (
                           <div key={i} className="aspect-[512/416] w-full rounded border border-slate-700/50 overflow-hidden bg-slate-800 relative">
-                            {/* Wrapper Div 負責擷取特定儲存格位置 */}
                             <div style={{
                               position: 'absolute',
                               width: '500%',
@@ -781,7 +774,6 @@
                       })}
                     </div>
 
-                    {/* BG Mode Selector */}
                     <div className="mt-8 bg-[#0f172a] p-6 rounded-xl border border-slate-800 text-slate-200 shadow-inner">
                       <div className="text-center font-bold text-white mb-6 tracking-wide text-sm">去背模式選擇：</div>
                       <div className="flex flex-col md:flex-row gap-4 max-w-2xl mx-auto">
@@ -800,7 +792,6 @@
                       </div>
                     </div>
 
-                    {/* Action Buttons */}
                     <div className="mt-8 flex justify-center gap-4">
                       <button onClick={handleReset} className="px-8 py-3.5 rounded-xl font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors">
                           重新上傳
@@ -829,14 +820,12 @@
                       </button>
                     </div>
 
-                    {/* Final Download Panel */}
                     <div className="mb-8 pb-8 border-b border-slate-700">
                       <h3 className="text-xl font-bold text-white mb-6 flex items-center">
                         <CheckCircle2 className="w-6 h-6 mr-2 text-emerald-400" /> 設定與打包下載
                       </h3>
                       <div className="flex flex-col lg:flex-row gap-6 items-stretch">
                         
-                        {/* Info Box */}
                         <div className="flex-1 bg-slate-800/50 border border-yellow-500/30 rounded-xl p-6 shadow-inner flex flex-col justify-center">
                           <div className="flex items-center text-yellow-500 font-bold mb-3 text-lg">
                             <Info className="w-5 h-5 mr-2" /> 下載前注意事項：
@@ -848,7 +837,6 @@
                           </ul>
                         </div>
 
-                        {/* Action Panel */}
                         <div className="flex flex-col sm:flex-row gap-4">
                           <div className="bg-[#0f172a] border border-slate-700 rounded-xl p-4 flex flex-col justify-center w-full sm:w-32 shadow-inner">
                             <label className="text-xs font-bold text-slate-400 mb-2"># 起始編號</label>
@@ -876,7 +864,6 @@
                       {processedImages.map((src, i) => (
                         <div key={i} className="bg-[#0f172a] rounded-lg p-3 border border-slate-800 flex flex-col group hover:border-slate-600 transition-colors">
                           
-                          {/* Transparent Canvas Container */}
                           <div 
                             className="w-full aspect-[370/320] rounded overflow-hidden relative border border-slate-800/50"
                             style={{
@@ -889,12 +876,10 @@
                             <img src={src} className="w-full h-full object-contain" alt={`sticker-${i+1}`} />
                           </div>
 
-                          {/* File Name */}
                           <div className="text-center text-[11px] font-mono font-medium text-slate-400 my-2 bg-slate-800/80 py-1.5 rounded-md mx-1">
                             {String((parseInt(startNumber) || 1) + i).padStart(2, '0')}.png
                           </div>
 
-                          {/* Config Buttons */}
                           <div className="flex gap-1.5 mt-auto">
                             <button
                               onClick={() => setMainIndex(mainIndex === i ? null : i)}
