@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Line 貼圖自動化助手</title>
+  <title>LINE 貼圖自動化助手</title>
   
   <!-- 載入 Tailwind CSS (樣式) -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -72,16 +72,16 @@
     ];
 
     const SUBJECT_CONTENT_MAP = {
-      '日常用語': '【早安、晚安、謝謝、不客氣、對不起、沒問題、好的、收到、拜託、辛苦了、OK、等等】',
+      '日常用語': '【早安、晚安、謝謝、不客氣、對不起、沒問題、好的、收到、拜託、辛苦了、OK、等等、加油、恭喜、歡迎、再見、吃飯了、我來了、等我一下、改天聊】',
       '打招呼': '【Hello、Hi、早安、午安、晚安、你好、吃飽沒、好久不見、初次見面、歡迎、有空嗎、掰掰】',
       '上班日常': '【收到、馬上改、開會中、加班、準時下班、心累、報告長官、救命、領薪水、加油】',
-      '常見回應': '【真的假的、笑死、確?、好喔、??、!!!、無言、傻眼、厲害、佩服、+1、路過】',
-      '一個字': '【讚、好、收、乖、安、蛤、嚇、愛、嘿、唷、嗯、喔、衝、忙、累、餓、渴、痛、鳴、耶】',
+      '常見回應': '【真的假的、笑死、確定？、好喔、蛤？、太扯了、無言、傻眼、厲害、佩服、+1、路過、原來如此、沒錯、可以喔、我懂、不要吧、同意、再說一次、你認真？】',
+      '一個字': '【讚、好、收、乖、安、蛤、嚇、愛、嘿、唷、嗯、喔、衝、忙、累、餓、渴、痛、嗚、耶】',
       '導遊帶團': '【集合囉、看這邊、跟緊我、注意安全、自由時間、出發！、拍照囉、點名、上車、這必吃】',
       '團購專用': '【我要+1、結單囉、已匯款、末五碼、面交、開團中、最後倒數、這超好用、缺貨中、許願】',
       '超商社群': '【新品到貨、點數兌換、第二件六折、快閃優惠、友善食光、店取已到、熱賣中、報電話】',
       '情侶放閃': '【想你了、愛你唷、我的寶、快回來、討抱抱、心動動、麼麼噠、最帥了、最正了、在幹嘛】',
-      '萌寵生活': '【喵~~、汪！、求罐罐、拆家中、不想動、討摸摸、肚子餓、已讀、不想理你、看什麼看】',
+      '萌寵生活': '【喵～、汪！、求罐罐、拆家中、不想動、討摸摸、肚子餓、已讀、不想理你、看什麼看、陪我玩、想睡覺、開飯啦、別吵我、好舒服、我要抱抱、放我出去、回家囉、乖乖等、最愛你】',
       '家人互動篇': '【爸、媽、早點回家、吃飯沒、我出門了、注意安全、幫我買、晚點回、要不要吃、愛你們】',
       '股票菜籃族': '【漲停板、跌停、加碼、停損、韭菜、上車、下車、護國神山、套牢、衝啊】',
       '節日祝福': '【新年快樂、生日快樂、聖誕快樂、情人節快樂、中秋節快樂、母親節快樂、父親節快樂、萬聖節、恭喜發財、佳節愉快】',
@@ -93,7 +93,13 @@
 
     const STYLES = [
       '可愛 Q 版', '照片級寫實', '3D 公仔', '扁平插畫', '童書繪本', '童趣手繪', 
-      '日系 Chibi', '清新水彩', '古風水墨', '復古像素', '吉卜力風'
+      '日系 Chibi', '清新水彩', '古風水墨', '復古像素', '溫暖日系手繪動畫風'
+    ];
+
+    const KEY_COLORS = [
+      { id: 'green', label: '純綠幕', hex: '#00FF00', rgb: [0, 255, 0], note: '適合黃色、橘色、粉紅色角色' },
+      { id: 'blue', label: '純藍幕', hex: '#0000FF', rgb: [0, 0, 255], note: '適合綠色或暖色系角色' },
+      { id: 'magenta', label: '洋紅幕', hex: '#FF00FF', rgb: [255, 0, 255], note: '適合含大量綠色的角色與道具' }
     ];
 
     const App = () => {
@@ -106,6 +112,8 @@
         style: '可愛 Q 版'
       });
       const [copied, setCopied] = useState(false);
+      const [characterDescription, setCharacterDescription] = useState('');
+      const [customPhrases, setCustomPhrases] = useState('');
       
       // File Upload & Image Processing States
       const [isDragging, setIsDragging] = useState(false);
@@ -121,13 +129,67 @@
       const [tabIndex, setTabIndex] = useState(null);
       const [isDownloading, setIsDownloading] = useState(false);
       const [startNumber, setStartNumber] = useState(1);
+      const [greenStrength, setGreenStrength] = useState(55);
+      const [edgeCleanup, setEdgeCleanup] = useState(true);
+      const [keyColorId, setKeyColorId] = useState('green');
 
       const fileInputRef = useRef(null);
 
       // --- Handlers ---
       const handleSelect = (category, value) => {
         setSelections(prev => ({ ...prev, [category]: value }));
+        if (category === 'subject') setCustomPhrases('');
       };
+
+      const getPhraseArray = () => {
+        const source = customPhrases.trim() ? customPhrases : (SUBJECT_CONTENT_MAP[selections.subject] || '');
+        return source.replace(/[【】]/g, '').split(/[、,，\n]/).map(s => s.trim()).filter(Boolean).slice(0, 20);
+      };
+
+      const getPhraseText = () => getPhraseArray().map((text, i) => `${String(i + 1).padStart(2, '0')}.「${text}」`).join('；');
+
+      const STYLE_RULES = {
+        '可愛 Q 版': '明亮協調、造型圓潤、表情清楚、2D平面插畫感；字型圓潤活潑。',
+        '照片級寫實': '寫實光影與材質，但輪廓清楚、背景完全純色；文字使用清楚的粗體字。',
+        '3D 公仔': '精緻3D公仔材質、柔和棚拍光線、比例一致；禁止背景投影與幕布反光。',
+        '扁平插畫': '簡潔色塊、乾淨線條、少量陰影；字型清楚俐落。',
+        '童書繪本': '溫暖柔和配色、童趣筆觸與手繪感；字型帶自然手寫感但必須清楚。',
+        '童趣手繪': '自然手繪線條、活潑但不凌亂；保持固定角色比例與統一色盤。',
+        '日系 Chibi': '日系迷你角色比例、精緻五官、柔和明亮配色；表情誇張但角色不可走樣。',
+        '清新水彩': '透明柔和的水彩筆觸、清爽低飽和配色；輪廓仍須完整，顏料不得擴散到幕布。',
+        '古風水墨': '含蓄水墨筆觸與留白感；墨色不得污染純色幕布，角色輪廓必須封閉清楚。',
+        '復古像素': '統一像素尺寸、有限協調色盤、清楚像素輪廓與像素字型。',
+        '溫暖日系手繪動畫風': '溫暖自然色調、細膩手繪動畫感、柔和但清楚的輪廓；禁止模仿特定作品或角色。'
+      };
+
+      const getStyleRule = () => STYLE_RULES[selections.style] || '全組保持一致的畫風、線條、比例與配色。';
+
+      const getModeRules = () => ({
+        char_text: {
+          label: '主角＋文字',
+          rule: '每格都必須同時有主角與一句指定文字；文字約佔40%、主角約佔60%，文字不可遮住臉部。'
+        },
+        char_only: {
+          label: '只要主角',
+          rule: '每格只呈現主角與動作表情，禁止出現任何文字、字母、數字、符號、對話框或浮水印。'
+        },
+        text_only: {
+          label: '純文字大字',
+          rule: '每格只呈現指定文字，禁止出現人物、動物或角色；文字必須大而清楚並位於中央。'
+        }
+      }[selections.contentMode]);
+
+      const getCharacterRule = () => {
+        if (selections.contentMode === 'text_only') return '本模式不使用角色。';
+        if (selections.charSource === 'upload_ref') {
+          return `嚴格依照使用者上傳的參考圖，保持角色臉型、比例、顏色、服裝、配件與辨識特徵一致。${characterDescription ? `補充設定：${characterDescription}` : ''}`;
+        }
+        return characterDescription.trim()
+          ? `依照以下設定建立固定角色，20格皆不得改變角色辨識特徵：${characterDescription.trim()}`
+          : '請先在角色描述欄輸入角色外型、顏色、服裝、配件與個性。';
+      };
+
+      const getKeyColor = () => KEY_COLORS.find(c => c.id === keyColorId) || KEY_COLORS[0];
 
       const handleDragOver = (e) => {
         e.preventDefault();
@@ -175,11 +237,25 @@
       // 處理 ZIP 打包下載
       const handleDownloadZip = async () => {
         if (processedImages.length === 0) return;
+        if (mainIndex === null || tabIndex === null) {
+          alert('請先各選擇一張 Main 封面圖與 Tab 分頁圖，再下載 ZIP。');
+          return;
+        }
+        const start = parseInt(startNumber);
+        if (![1, 21].includes(start)) {
+          alert('起始編號請輸入 1（第一批01–20）或 21（第二批21–40）。');
+          return;
+        }
+        const oversized = processedImages.findIndex(dataUrl => Math.ceil((dataUrl.split(',')[1]?.length || 0) * 3 / 4) > 1024 * 1024);
+        if (oversized !== -1) {
+          alert(`第 ${oversized + 1} 張貼圖超過 LINE 每張 1MB 的限制，請縮小原圖後重試。`);
+          return;
+        }
         try {
           setIsDownloading(true);
           
           const zip = new window.JSZip();
-          const start = parseInt(startNumber) || 1;
+          // 第一批使用 01–20，第二批使用 21–40。
 
           // 將圖片縮放至 LINE 官方規範尺寸
           const resizeImage = (dataUrl, targetW, targetH) => {
@@ -240,7 +316,7 @@
         }
       };
 
-      // 核心演算法：無誤差 Canvas 切割與綠幕去背
+      // 核心演算法：無誤差 Canvas 切割與可選底色智慧去背
       const processImages = async () => {
         if (!previewUrl) return;
         setIsProcessing(true);
@@ -249,7 +325,10 @@
         img.crossOrigin = "anonymous";
         img.src = previewUrl;
 
-        await new Promise(resolve => { img.onload = resolve; });
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = () => reject(new Error('圖片讀取失敗'));
+        });
 
         const results = [];
         const sliceWidth = 512;
@@ -282,22 +361,45 @@
           // 繪製原始圖片
           ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, originalW, originalH);
 
-          // 去背演算法 (Chroma Key)
+          // 智慧邊界連通去背：只清除與四周相連的幕布，保留角色內部相同顏色。
           const imageData = ctx.getImageData(0, 0, sliceWidth, sliceHeight);
           const data = imageData.data;
-          
-          for (let p = 0; p < data.length; p += 4) {
-            const r = data[p];
-            const g = data[p + 1];
-            const b = data[p + 2];
-
-            if (bgMode === 'mode1') {
-              // 模式 1：完全去背 (大範圍清除所有偏綠像素)
-              if (g > 100 && g > r * 1.2 && g > b * 1.2) data[p + 3] = 0;
-            } else {
-              // 模式 2：極度嚴格的保留文字判定 (升級版)
-              // 只有在 G 極度接近 255，且 R 與 B 極低的時候才剔除，完美保護淺綠色字體
-              if (g > 190 && r < 65 && b < 65) data[p + 3] = 0;
+          const [kr, kg, kb] = getKeyColor().rgb;
+          const tolerance = bgMode === 'mode1' ? 25 + Math.round(greenStrength * 0.9) : 18 + Math.round(greenStrength * 0.25);
+          const total = sliceWidth * sliceHeight;
+          const visited = new Uint8Array(total);
+          const removed = new Uint8Array(total);
+          const queue = new Int32Array(total);
+          let head = 0, tail = 0;
+          const matchesKey = (idx, extra = 0) => {
+            const p = idx * 4;
+            return Math.max(Math.abs(data[p] - kr), Math.abs(data[p + 1] - kg), Math.abs(data[p + 2] - kb)) <= tolerance + extra;
+          };
+          const enqueue = (idx) => {
+            if (!visited[idx] && matchesKey(idx)) { visited[idx] = 1; queue[tail++] = idx; }
+          };
+          for (let x = 0; x < sliceWidth; x++) { enqueue(x); enqueue((sliceHeight - 1) * sliceWidth + x); }
+          for (let y = 0; y < sliceHeight; y++) { enqueue(y * sliceWidth); enqueue(y * sliceWidth + sliceWidth - 1); }
+          while (head < tail) {
+            const idx = queue[head++];
+            removed[idx] = 1;
+            data[idx * 4 + 3] = 0;
+            const x = idx % sliceWidth;
+            if (x > 0) enqueue(idx - 1);
+            if (x < sliceWidth - 1) enqueue(idx + 1);
+            if (idx >= sliceWidth) enqueue(idx - sliceWidth);
+            if (idx < total - sliceWidth) enqueue(idx + sliceWidth);
+          }
+          if (edgeCleanup) {
+            // 柔化幕布與主體交界的半透明毛邊，但不向主體內部持續擴張。
+            for (let idx = 0; idx < total; idx++) {
+              if (removed[idx]) continue;
+              const x = idx % sliceWidth;
+              const touchesRemoved = (x > 0 && removed[idx - 1]) || (x < sliceWidth - 1 && removed[idx + 1]) || (idx >= sliceWidth && removed[idx - sliceWidth]) || (idx < total - sliceWidth && removed[idx + sliceWidth]);
+              if (touchesRemoved && matchesKey(idx, Math.round(tolerance * 0.65))) {
+                const p = idx * 4;
+                data[p + 3] = Math.min(data[p + 3], 90);
+              }
             }
           }
           ctx.putImageData(imageData, 0, 0);
@@ -328,61 +430,72 @@
       // Generate Prompt Data
       const getPromptData = () => [
         {
-          title: '[佈局與對位設定]',
+          title: '[1. 任務與20格規格]',
           items: [
-            { label: '畫幅設定', value: '2560 × 1664 px', suffix: ' (強制橫向矩形畫幅)。', type: 'blue' },
-            { label: '佈局結構', value: '精確佈局為 4 橫排 (Rows) × 5 直欄 (Columns)，共 20 格。', type: 'blue' },
-            { label: '強制中心', value: '主角必須位於每格 (512x416 px) 的精確物理中心。', type: 'blue' },
-            { label: '留邊規範', value: '主體內容最大化，但必須與邊界保留至少 20px 安全邊距，避免裁切。', type: 'blue' }
+            { label: '任務', value: `製作一張${getModeRules().label}貼圖集；本次固定20張，兩次分別作為01–20與21–40。`, type: 'orange' },
+            { label: '畫幅', value: '2560×1664 px橫式畫面；固定5欄×4列，共20個彼此獨立的隱形單元，每格512×416 px。', type: 'blue' },
+            { label: '獨立性', value: '每格只能有一個完整貼圖設計；禁止跨格、黏連、重疊、合併、共用角色、少格或多格。', type: 'blue' },
+            { label: '無格線', value: '禁止畫出任何實體框線或分隔線，但每格之間必須保留清楚的純色背景間距。', type: 'blue' }
           ]
         },
         {
-          title: '[嚴格禁忌]',
+          title: '[2. 角色鎖定設定]',
           items: [
-            { label: '無物理格線', value: '絕對禁止出現任何單元格框線、分隔線或格線。', type: 'blue' },
-            { label: '背景色', value: '背景必須為 100% 純淨綠幕 (#00FF00)，禁止任何陰影、漸層或發光。', type: 'blue' },
-            { value: '1. 每一組貼圖內不能有重複的用語', type: 'blue' },
-            { value: '2. 每一個貼圖用語務必呼應表情，不可以有不吻合的狀態', type: 'blue' },
-            { value: '3. 確保貼圖用語內，不能有【 】的符號', type: 'blue' },
-            { value: '4. 貼圖文字不可使用任何表情符號', type: 'blue' }
+            { label: '角色來源', value: getCharacterRule(), type: 'orange' },
+            { label: '一致性', value: selections.contentMode === 'text_only' ? '純文字模式不使用角色。' : '20格必須是同一角色：固定臉型、五官位置、頭身比例、身體顏色、服裝、配件、線條與材質；只能改變姿勢、手勢、表情與視線。', type: 'blue' },
+            { label: '禁止走樣', value: selections.contentMode === 'text_only' ? '禁止加入人物、動物、吉祥物或裝飾角色。' : '禁止改變毛色與服裝、增加或減少肢體、變成不同年齡、不同角色或不同畫風。', type: 'blue' }
           ]
         },
         {
-          title: '[文字色彩與避讓規範 (極重要)]',
+          title: '[3. 用語、表情與動作]',
           items: [
-            { label: '色彩原則', value: '必須使用高飽和度、鮮豔奪目的 Pop Art 風格色彩。', type: 'orange' },
-            { label: '多變隨機', value: '20 個貼圖的文字顏色必須「完全不同且隨機」，呈現萬花筒般的多彩視覺。允許單色或鮮豔漸層。', type: 'orange' },
-            { label: '色彩範圍', value: '可包含亮桃紅、電光藍、鮮橙色、亮紫色、蒂芬妮藍、火焰紅、檸檬黃（非綠色調的黃）等。', type: 'orange' },
-            { label: '強制禁忌', value: '文字主體絕對禁止使用任何形式的綠色（含亮綠、深綠、螢光綠等），確保不與綠幕背景重疊。', type: 'orange' }
+            { label: '內容模式', value: getModeRules().rule, type: 'orange' },
+            { label: '指定用語', value: selections.contentMode === 'char_only' ? `依照「${selections.subject}」設計20種語意清楚、不重複的動作與表情，不放任何文字。` : getPhraseText(), type: 'orange' },
+            { label: '不足20句', value: selections.contentMode === 'char_only' || getPhraseArray().length === 20 ? '目前內容可直接依序製作20格。' : `目前指定${getPhraseArray().length}句；請依「${selections.subject}」補足至20句，新增內容不得與既有用語重複。`, type: 'blue' },
+            { label: '文字正確', value: selections.contentMode === 'char_only' ? '禁止任何文字、字母、數字、符號、對話框與浮水印。' : '每格只放一句；指定文字必須逐字照抄，使用繁體中文，禁止改寫、錯字、漏字、增字、簡體字、重複、英文翻譯、emoji及【】符號。', type: 'blue' },
+            { label: '語意配對', value: '每句用語必須搭配語意吻合且各不相同的表情、手勢與動作，不可出現文字與情緒矛盾。', type: 'blue' }
           ]
         },
         {
-          title: '[視覺設計規範]',
+          title: '[4. 版面與安全距離]',
           items: [
-            { label: '雙層描邊', value: '主角與文字外圍需具備「細薄黑邊內層」+「厚度適中圓滑白色外框」。', type: 'blue' },
-            { label: '排版比例', value: '文字佔比 40%、主角佔比 60%，文字不可遮臉。', type: 'blue' },
-            { label: '字型風格', value: `【${selections.style} Pop Art 字型】`, type: 'orange' }
+            { label: '視覺置中', value: '每格主體保持視覺置中，可依動作與文字位置微調；禁止所有角色僵硬地位於完全相同位置。', type: 'blue' },
+            { label: '安全距離', value: '每格所有內容與四邊至少保留20px純色背景；文字不可遮臉、遮住重要動作或跨越隱形格界。', type: 'blue' },
+            { label: '自然輪廓', value: '主角輪廓乾淨完整，可使用1～2像素的角色同色系深色描邊；禁止厚白色貼紙框、白色光暈及大片陰影。', type: 'blue' },
+            { label: '文字系統', value: '全組使用一致字型、描邊粗細與3～5種協調配色交替；禁止20種完全隨機且互不協調的文字顏色。', type: 'blue' }
           ]
         },
         {
-          title: '[創意修改區]',
+          title: '[5. 畫風專屬規則]',
           items: [
-            { label: '主題內容', value: SUBJECT_CONTENT_MAP[selections.subject] || `【以「${selections.subject}」為主】`, type: 'orange' },
-            { label: '表情參考', value: '【喜、怒、哀、樂、驚訝、無語、放空、崩潰、害羞、自信、睡著、被嚇到...】', type: 'orange' },
-            { label: '畫風選擇', value: `【${selections.style}：可愛、活潑、2D 平面貼紙風格】`, type: 'orange' }
+            { label: '選定畫風', value: selections.style, type: 'orange' },
+            { label: '畫風要求', value: getStyleRule(), type: 'orange' },
+            { label: '全組統一', value: '20格的筆觸、角色比例、輪廓粗細、材質、光線與色彩系統必須一致，不得混入其他畫風。', type: 'blue' }
           ]
         },
         {
-          title: '[輸出格式總結]',
+          title: '[6. 幕布與去背規則]',
           items: [
-            { label: '格式明細', value: '一張 2560x1664 大圖，共 20 個貼圖，背景 #00FF00，無格線。確保文字顏色不含綠色', type: 'blue' }
+            { label: '純色幕布', value: `背景必須為100%純淨${getKeyColor().label}（${getKeyColor().hex}），整張只能使用此單一色碼；禁止漸層、紋理、噪點、陰影、反光及發光。`, type: 'orange' },
+            { label: '四周連通', value: '每格主體與四周之間都必須保留完整、連續、未被遮擋的純色幕布；背景須從四個角落連通到主體外圍，不可被裝飾或陰影切斷。', type: 'blue' },
+            { label: '主體用色', value: `角色、文字與道具可以正常使用任何顏色，包括與${getKeyColor().label}相近的顏色，但主體輪廓必須完整封閉。`, type: 'blue' },
+            { label: '邊緣品質', value: '禁止幕布色反光、溢色或毛邊污染主體邊緣；水彩、墨跡與陰影不得擴散進幕布。', type: 'blue' }
+          ]
+        },
+        {
+          title: '[7. 輸出前逐格核對]',
+          items: [
+            { label: '數量核對', value: '確認正好5欄×4列＝20格，無缺格、重複格、合併格、跨格或實體格線。', type: 'blue' },
+            { label: '角色核對', value: '確認20格角色設定與畫風完全一致，沒有多餘肢體、服裝變化或角色走樣。', type: 'blue' },
+            { label: '文字核對', value: selections.contentMode === 'char_only' ? '確認20格完全沒有文字或符號。' : '由左至右、由上至下逐格核對繁體中文，確認每句正確、清楚、不重複且與表情吻合。', type: 'blue' },
+            { label: '輸出總結', value: `輸出一張2560×1664 PNG大圖；20格、背景${getKeyColor().hex}、無格線、無厚白框。`, type: 'orange' }
           ]
         }
       ];
 
       const handleCopy = () => {
         const data = getPromptData();
-        let textToCopy = '請參考設定生成一張包含 20 個不同內容的貼圖集，也不要使用任何emoji表情符號。\n\n';
+        let textToCopy = '請嚴格依照以下規格生成一張包含20個不同內容的LINE貼圖集。請先完整理解全部規則，再一次完成畫面；不要省略任何格子或自行更改指定文字。\n\n';
         data.forEach(section => {
           textToCopy += `${section.title}\n`;
           section.items.forEach(item => {
@@ -446,7 +559,7 @@
                   <MessageSquare className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold tracking-wide text-rose-800">Line 貼圖自動化助手</h1>
+                  <h1 className="text-2xl font-bold tracking-wide text-rose-800">LINE 貼圖自動化助手</h1>
                 </div>
               </div>
               <StepIndicator />
@@ -528,6 +641,12 @@
                           </button>
                         ))}
                       </div>
+                      {selections.contentMode !== 'text_only' && (
+                        <div className="mt-4">
+                          <label className="block text-sm font-bold text-rose-700 mb-2">{selections.charSource === 'upload_ref' ? '參考圖補充說明（選填）' : '自訂角色描述（必填）'}</label>
+                          <textarea value={characterDescription} onChange={(e) => setCharacterDescription(e.target.value)} rows="3" placeholder="例如：黃色小鳥蓬啾，圓滾身形、橘色小嘴、頭頂三根毛；所有貼圖的外型與比例一致。" className="w-full rounded-lg border border-pink-200 bg-pink-50/40 px-4 py-3 text-sm outline-none focus:border-pink-400" />
+                        </div>
+                      )}
                     </div>
 
                     <div className="h-px bg-pink-100 w-full" />
@@ -550,6 +669,13 @@
                           </button>
                         ))}
                       </div>
+                      {selections.contentMode !== 'char_only' && (
+                        <div className="mt-4">
+                          <label className="block text-sm font-bold text-rose-700 mb-2">自訂20句用語（選填，以頓號、逗號或換行分隔）</label>
+                          <textarea value={customPhrases} onChange={(e) => setCustomPhrases(e.target.value)} rows="3" placeholder="留白時使用預設主題；自行輸入時取前20句。" className="w-full rounded-lg border border-pink-200 bg-pink-50/40 px-4 py-3 text-sm outline-none focus:border-pink-400" />
+                          <div className="mt-1 text-xs text-pink-500">目前輸入 {customPhrases.split(/[、,，\n]/).map(s => s.trim()).filter(Boolean).length} 句</div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="h-px bg-pink-100 w-full" />
@@ -573,6 +699,23 @@
                         ))}
                       </div>
                     </div>
+
+                    <div className="h-px bg-pink-100 w-full" />
+
+                    {/* 5. 選擇去背底色 */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-rose-700 mb-4">5. 選擇去背底色：</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {KEY_COLORS.map(color => (
+                          <button key={color.id} onClick={() => setKeyColorId(color.id)} className={`p-3 rounded-lg border text-left transition-all ${keyColorId === color.id ? 'border-pink-500 bg-pink-50 shadow-md' : 'border-pink-200 bg-white hover:bg-pink-50/50'}`}>
+                            <div className="flex items-center gap-3">
+                              <span className="w-8 h-8 rounded-md border border-slate-300 shadow-inner" style={{backgroundColor: color.hex}}></span>
+                              <span><strong className="block text-sm text-rose-800">{color.label} {color.hex}</strong><small className="text-rose-500">{color.note}</small></span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -589,7 +732,7 @@
                   
                   <div className="p-6">
                     <div className="bg-[#fff5f7] p-6 rounded-lg font-sans text-sm leading-relaxed text-rose-800 border border-pink-100 overflow-y-auto max-h-[550px] space-y-6 shadow-inner">
-                      <p className="text-rose-600 mb-2 font-medium">請參考設定生成一張包含 20 個不同內容的貼圖集，也不要使用任何emoji表情符號。</p>
+                      <p className="text-rose-600 mb-2 font-medium">請嚴格依照以下規格生成20格LINE貼圖集；角色、文字、畫風、幕布與版面會自動整合成完整提示詞。</p>
                       
                       {getPromptData().map((section, sIdx) => (
                         <div key={sIdx}>
@@ -778,17 +921,33 @@
                       <div className="text-center font-bold text-white mb-6 tracking-wide text-sm">去背模式選擇：</div>
                       <div className="flex flex-col md:flex-row gap-4 max-w-2xl mx-auto">
                         <button onClick={() => setBgMode('mode1')} className={`flex-1 p-5 rounded-xl font-bold flex flex-col items-center justify-center transition-all ${bgMode === 'mode1' ? 'bg-[#ef4444] text-white shadow-lg shadow-red-500/30 scale-105 border-2 border-red-400' : 'bg-[#1e293b] text-slate-400 border border-slate-700 hover:bg-slate-800'}`}>
-                            <span className="text-base tracking-wide">模式 1: 完全去背</span>
-                            <span className="text-xs font-medium mt-1.5 opacity-90">移除所有綠色</span>
+                            <span className="text-base tracking-wide">模式1：智慧邊界去背</span>
+                            <span className="text-xs font-medium mt-1.5 opacity-90">只移除與四周相連的底色</span>
                         </button>
                         <button onClick={() => setBgMode('mode2')} className={`flex-1 p-5 rounded-xl font-bold flex flex-col items-center justify-center transition-all ${bgMode === 'mode2' ? 'bg-[#334155] text-white shadow-lg shadow-slate-900/50 scale-105 border-2 border-slate-400' : 'bg-[#1e293b] text-slate-400 border border-slate-700 hover:bg-slate-800'}`}>
-                            <span className="text-base tracking-wide">模式 2: 保留文字</span>
-                            <span className="text-xs font-medium mt-1.5 opacity-90">極度嚴格保留淺綠色字體</span>
+                            <span className="text-base tracking-wide">模式2：純色精準去背</span>
+                            <span className="text-xs font-medium mt-1.5 opacity-90">背景非常純時使用</span>
                         </button>
+                      </div>
+                      <div className="max-w-2xl mx-auto mt-6 bg-slate-900/60 rounded-lg p-4 border border-slate-700">
+                        <div className="text-xs font-bold text-slate-300 mb-3">本張圖片的去背底色</div>
+                        <div className="grid grid-cols-3 gap-2 mb-5">
+                          {KEY_COLORS.map(color => (
+                            <button key={color.id} onClick={() => setKeyColorId(color.id)} className={`rounded-md p-2 text-[11px] font-bold border ${keyColorId === color.id ? 'border-white text-white bg-slate-700' : 'border-slate-700 text-slate-400'}`}>
+                              <span className="inline-block w-3 h-3 rounded-sm mr-1 align-middle border border-white/40" style={{backgroundColor: color.hex}}></span>{color.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex justify-between text-xs font-bold text-slate-300 mb-2"><span>去綠強度</span><span>{greenStrength}%</span></div>
+                        <input type="range" min="0" max="100" value={greenStrength} onChange={(e) => setGreenStrength(Number(e.target.value))} className="w-full accent-emerald-500" />
+                        <label className="mt-4 flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                          <input type="checkbox" checked={edgeCleanup} onChange={(e) => setEdgeCleanup(e.target.checked)} className="accent-emerald-500" />
+                          淡化半透明綠邊（建議開啟）
+                        </label>
                       </div>
                       <div className="text-xs text-slate-400 mt-6 text-center flex items-center justify-center">
                         <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-500 flex-shrink-0" />
-                        {bgMode === 'mode1' ? '√ 完全移除所有綠色背景 (文字內的淺綠色也會被清除)' : '√ 智能嚴格對比純綠色，完美保護圖案中的淺綠色字體不被吃掉'}
+                        {bgMode === 'mode1' ? `只移除與四周相連的${getKeyColor().label}，角色內部相同顏色會保留` : `以較低容差精準移除${getKeyColor().label}，適合背景色非常純淨時使用`}
                       </div>
                     </div>
 
