@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LINE 貼圖自動化助手</title>
+  <title>LINE 貼圖與表情貼製作助手</title>
   
   <!-- 載入 Tailwind CSS (樣式) -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -15,6 +15,8 @@
   
   <!-- 載入 JSZip (打包下載功能) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
   
   <style>
     /* 自訂動畫設定 */
@@ -29,7 +31,7 @@
 
   <!-- 核心程式碼區域 -->
   <script type="text/babel">
-    const { useState, useRef } = React;
+    const { useState, useRef, useEffect } = React;
 
     // --- 免套件內建 SVG 圖示 ---
     const Icons = {
@@ -102,6 +104,24 @@
       { id: 'magenta', label: '洋紅幕', hex: '#FF00FF', rgb: [255, 0, 255], note: '適合含大量綠色的角色與道具' }
     ];
 
+    const PRODUCT_TYPES = {
+      sticker: { label: '一般貼圖', animated: false, emoji: false, outputW: 370, outputH: 320, digits: 2, batchOutputs: 20, note: '一批20張，兩批共40張' },
+      emoji: { label: '表情貼', animated: false, emoji: true, outputW: 180, outputH: 180, digits: 3, batchOutputs: 20, note: '一批20張，兩批共40張' },
+      animated_sticker: { label: '動態貼圖', animated: true, emoji: false, outputW: 320, outputH: 270, digits: 2, batchOutputs: 4, note: '每5格合成1張；一批4張，兩批共8張' },
+      animated_emoji: { label: '動態表情貼', animated: true, emoji: true, outputW: 180, outputH: 180, digits: 3, batchOutputs: 4, note: '每5格合成1張；一批4張，兩批共8張' }
+    };
+
+    const EMOJI_LAYOUTS = {
+      icon_text: { label: '圖文型', ratio: 60, rule: '繁體文字為主、小圖示為輔；文字約60%、圖示約40%。圖示只幫助理解，不可搶過文字。' },
+      bold_text: { label: '彩色大字型', ratio: 80, rule: '粗圓大字或手繪粗體置於不規則協調色塊上；文字約80%，裝飾約20%，文字本身就是主要圖案。' },
+      handwriting: { label: '手寫純文字型', ratio: 90, rule: '自然手寫文字占畫面約90%，最多搭配一個小愛心、星星或短線；禁止人物與複雜插圖。' },
+      character_text: { label: '角色短字型', ratio: 40, rule: '角色約60%、短文字約40%；角色表情鮮明，文字不可遮住臉部與重要動作。' }
+    };
+
+    const HANDWRITING_STYLES = ['柔和鉛筆', '粗頭麥克筆', '粉筆手寫', '可愛圓筆', '自然毛筆'];
+    const ICON_OPTIONS = ['自動搭配', '電話', '信封', '星星', '愛心', '驚嘆號', '小喇叭'];
+    const ANIMATION_OPTIONS = ['圖示閃爍', '輕微震動', '上下跳動', '聲波展開', '色塊呼吸'];
+
     const App = () => {
       // --- States ---
       const [activeTab, setActiveTab] = useState('generator');
@@ -132,8 +152,22 @@
       const [greenStrength, setGreenStrength] = useState(55);
       const [edgeCleanup, setEdgeCleanup] = useState(true);
       const [keyColorId, setKeyColorId] = useState('green');
+      const [productType, setProductType] = useState('sticker');
+      const [frameDelay, setFrameDelay] = useState(160);
+      const [previewFrame, setPreviewFrame] = useState(0);
+      const [emojiLayout, setEmojiLayout] = useState('icon_text');
+      const [textRatio, setTextRatio] = useState(60);
+      const [handwritingStyle, setHandwritingStyle] = useState('粗頭麥克筆');
+      const [iconOption, setIconOption] = useState('自動搭配');
+      const [animationOption, setAnimationOption] = useState('圖示閃爍');
 
       const fileInputRef = useRef(null);
+
+      useEffect(() => {
+        if (!getProduct().animated || processedImages.length === 0) return;
+        const timer = setInterval(() => setPreviewFrame(v => (v + 1) % 5), frameDelay);
+        return () => clearInterval(timer);
+      }, [productType, processedImages.length, frameDelay]);
 
       // --- Handlers ---
       const handleSelect = (category, value) => {
@@ -190,6 +224,13 @@
       };
 
       const getKeyColor = () => KEY_COLORS.find(c => c.id === keyColorId) || KEY_COLORS[0];
+      const getProduct = () => PRODUCT_TYPES[productType];
+      const getSourceSpec = () => {
+        if (productType === 'emoji' || productType === 'animated_emoji') return { w: 2560, h: 2048, cellW: 512, cellH: 512 };
+        if (productType === 'animated_sticker') return { w: 2560, h: 1728, cellW: 512, cellH: 432 };
+        return { w: 2560, h: 1664, cellW: 512, cellH: 416 };
+      };
+      const getEmojiLayout = () => EMOJI_LAYOUTS[emojiLayout] || EMOJI_LAYOUTS.icon_text;
 
       const handleDragOver = (e) => {
         e.preventDefault();
@@ -237,13 +278,14 @@
       // 處理 ZIP 打包下載
       const handleDownloadZip = async () => {
         if (processedImages.length === 0) return;
-        if (mainIndex === null || tabIndex === null) {
-          alert('請先各選擇一張 Main 封面圖與 Tab 分頁圖，再下載 ZIP。');
+        if ((!getProduct().emoji && mainIndex === null) || tabIndex === null) {
+          alert(getProduct().emoji ? '請先選擇一張 Tab 分頁圖。' : '請先各選擇一張 Main 封面圖與 Tab 分頁圖。');
           return;
         }
         const start = parseInt(startNumber);
-        if (![1, 21].includes(start)) {
-          alert('起始編號請輸入 1（第一批01–20）或 21（第二批21–40）。');
+        const validStarts = getProduct().animated ? [1, 5] : [1, 21];
+        if (!validStarts.includes(start)) {
+          alert(getProduct().animated ? '起始編號請輸入1（第一批4個）或5（第二批4個）。' : '起始編號請輸入1（第一批20張）或21（第二批20張）。');
           return;
         }
         const oversized = processedImages.findIndex(dataUrl => Math.ceil((dataUrl.split(',')[1]?.length || 0) * 3 / 4) > 1024 * 1024);
@@ -281,17 +323,70 @@
             });
           };
 
-          // 寫入 20 張主貼圖
-          processedImages.forEach((dataUrl, index) => {
-            const base64Data = dataUrl.split(',')[1];
-            const fileName = `${String(start + index).padStart(2, '0')}.png`;
-            zip.file(fileName, base64Data, { base64: true });
+          const dataUrlToRGBA = (dataUrl, targetW, targetH) => new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              canvas.width = targetW; canvas.height = targetH;
+              const ctx = canvas.getContext('2d');
+              ctx.clearRect(0, 0, targetW, targetH);
+              const scale = Math.min(targetW / img.width, targetH / img.height);
+              const width = img.width * scale, height = img.height * scale;
+              ctx.drawImage(img, (targetW - width) / 2, (targetH - height) / 2, width, height);
+              resolve(ctx.getImageData(0, 0, targetW, targetH).data.buffer);
+            };
+            img.src = dataUrl;
           });
 
+          const setAPNGLoopCount = (buffer, plays = 2) => {
+            const bytes = new Uint8Array(buffer);
+            const crc32 = (arr) => {
+              let crc = 0xffffffff;
+              for (const value of arr) {
+                crc ^= value;
+                for (let k = 0; k < 8; k++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+              }
+              return (crc ^ 0xffffffff) >>> 0;
+            };
+            for (let i = 8; i < bytes.length - 16; i++) {
+              if (bytes[i] === 97 && bytes[i+1] === 99 && bytes[i+2] === 84 && bytes[i+3] === 76) {
+                const view = new DataView(bytes.buffer);
+                view.setUint32(i + 8, plays, false);
+                view.setUint32(i + 12, crc32(bytes.slice(i, i + 12)), false);
+                break;
+              }
+            }
+            return bytes;
+          };
+
+          if (getProduct().animated) {
+            if (!window.UPNG) throw new Error('APNG元件尚未載入，請重新整理頁面後再試。');
+            for (let group = 0; group < 4; group++) {
+              const frames = await Promise.all(processedImages.slice(group * 5, group * 5 + 5).map(src => dataUrlToRGBA(src, getProduct().outputW, getProduct().outputH)));
+              const apng = window.UPNG.encode(frames, getProduct().outputW, getProduct().outputH, 0, Array(5).fill(frameDelay));
+              const maxBytes = getProduct().emoji ? 300 * 1024 : 1024 * 1024;
+              if (apng.byteLength > maxBytes) throw new Error(`動畫${group + 1}超過${getProduct().emoji ? '300KB' : '1MB'}，請降低圖片複雜度。`);
+              zip.file(`${String(start + group).padStart(getProduct().digits, '0')}.png`, setAPNGLoopCount(apng, 2));
+            }
+          } else {
+            processedImages.forEach((dataUrl, index) => {
+              const base64Data = dataUrl.split(',')[1];
+              const fileName = `${String(start + index).padStart(getProduct().digits, '0')}.png`;
+              zip.file(fileName, base64Data, { base64: true });
+            });
+          }
+
           // 寫入 Main 與 Tab 封圖
-          if (mainIndex !== null && processedImages[mainIndex]) {
-            const mainB64 = await resizeImage(processedImages[mainIndex], 240, 240);
-            zip.file('main.png', mainB64, { base64: true });
+          if (!getProduct().emoji && mainIndex !== null && processedImages[mainIndex]) {
+            if (getProduct().animated) {
+              const groupStart = Math.floor(mainIndex / 5) * 5;
+              const mainFrames = await Promise.all(processedImages.slice(groupStart, groupStart + 5).map(src => dataUrlToRGBA(src, 240, 240)));
+              const mainAPNG = window.UPNG.encode(mainFrames, 240, 240, 0, Array(5).fill(frameDelay));
+              zip.file('main.png', setAPNGLoopCount(mainAPNG, 2));
+            } else {
+              const mainB64 = await resizeImage(processedImages[mainIndex], 240, 240);
+              zip.file('main.png', mainB64, { base64: true });
+            }
           }
           if (tabIndex !== null && processedImages[tabIndex]) {
             const tabB64 = await resizeImage(processedImages[tabIndex], 96, 74);
@@ -303,14 +398,14 @@
           const url = URL.createObjectURL(content);
           const a = document.createElement('a');
           a.href = url;
-          a.download = 'LineStickers_Pack.zip';
+          a.download = `LINE_${getProduct().label}_Pack.zip`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
         } catch (error) {
           console.error("打包失敗:", error);
-          alert("打包過程發生錯誤，請稍後再試。");
+          alert(error?.message || "打包過程發生錯誤，請稍後再試。");
         } finally {
           setIsDownloading(false);
         }
@@ -331,10 +426,11 @@
         });
 
         const results = [];
-        const sliceWidth = 512;
-        const sliceHeight = 416;
-        const originalW = 2560;
-        const originalH = 1664;
+        const spec = getSourceSpec();
+        const sliceWidth = spec.cellW;
+        const sliceHeight = spec.cellH;
+        const originalW = spec.w;
+        const originalH = spec.h;
 
         for (let i = 0; i < 20; i++) {
           if (i % 5 === 0) await new Promise(r => setTimeout(r, 10));
@@ -406,18 +502,19 @@
 
           // --- 最終轉換：加入 LINE 官方安全邊距 (370x320 畫布，預留 10px 外距) ---
           const finalCanvas = document.createElement('canvas');
-          finalCanvas.width = 370;
-          finalCanvas.height = 320;
+          finalCanvas.width = getProduct().outputW;
+          finalCanvas.height = getProduct().outputH;
           const fCtx = finalCanvas.getContext('2d');
           
           // 安全區縮小為 350x300，確保邊緣不會切齊
-          const safeW = 350;
-          const safeH = 300;
+          const margin = getProduct().emoji ? 2 : (getProduct().animated ? 0 : 10);
+          const safeW = finalCanvas.width - margin * 2;
+          const safeH = finalCanvas.height - margin * 2;
           const scaleToFit = Math.min(safeW / sliceWidth, safeH / sliceHeight);
           const finalW = sliceWidth * scaleToFit;
           const finalH = sliceHeight * scaleToFit;
-          const finalX = (370 - finalW) / 2;
-          const finalY = (320 - finalH) / 2;
+          const finalX = (finalCanvas.width - finalW) / 2;
+          const finalY = (finalCanvas.height - finalH) / 2;
           
           fCtx.drawImage(canvas, finalX, finalY, finalW, finalH);
           results.push(finalCanvas.toDataURL('image/png'));
@@ -432,8 +529,8 @@
         {
           title: '[1. 任務與20格規格]',
           items: [
-            { label: '任務', value: `製作一張${getModeRules().label}貼圖集；本次固定20張，兩次分別作為01–20與21–40。`, type: 'orange' },
-            { label: '畫幅', value: '2560×1664 px橫式畫面；固定5欄×4列，共20個彼此獨立的隱形單元，每格512×416 px。', type: 'blue' },
+            { label: '任務', value: getProduct().animated ? `製作${getProduct().label}分鏡表：共20格，每連續5格為同一個動畫的5個連續畫格，最後合成4個正式APNG。` : `製作一張${getProduct().label}圖集；本次固定20張，兩次合計40張。`, type: 'orange' },
+            { label: '畫幅', value: `${getSourceSpec().w}×${getSourceSpec().h}px橫式畫面；固定5欄×4列，共20個彼此獨立的隱形單元，每格${getSourceSpec().cellW}×${getSourceSpec().cellH}px。`, type: 'blue' },
             { label: '獨立性', value: '每格只能有一個完整貼圖設計；禁止跨格、黏連、重疊、合併、共用角色、少格或多格。', type: 'blue' },
             { label: '無格線', value: '禁止畫出任何實體框線或分隔線，但每格之間必須保留清楚的純色背景間距。', type: 'blue' }
           ]
@@ -449,9 +546,17 @@
         {
           title: '[3. 用語、表情與動作]',
           items: [
+            ...(getProduct().emoji ? [
+              { label: '表情貼形式', value: `${getEmojiLayout().label}：${getEmojiLayout().rule}`, type: 'orange' },
+              { label: '文字占比', value: `文字約占畫面${textRatio}%；必須是第一眼最容易看見與讀懂的元素。`, type: 'orange' },
+              { label: '文字長度', value: '每張以1～4個繁體中文字為原則；短字必須放大，禁止細字、過度潦草、複雜漸層與低對比配色。', type: 'blue' },
+              ...((emojiLayout === 'handwriting' || emojiLayout === 'bold_text') ? [{ label: '文字筆觸', value: `${handwritingStyle}風格；保有自然手寫感，但筆畫必須夠粗、字形完整、縮小至180×180仍清楚。`, type: 'orange' }] : []),
+              ...((emojiLayout === 'icon_text' || emojiLayout === 'bold_text') ? [{ label: '輔助圖示', value: iconOption === '自動搭配' ? '依每句文字語意搭配一個最簡單的小圖示，例如電話、信封、星星、愛心、驚嘆號或小喇叭。' : `統一以「${iconOption}」為主要輔助圖示；圖示不可搶過文字。`, type: 'blue' }] : []),
+              ...(getProduct().animated ? [{ label: '動畫方式', value: `文字在5個畫格中固定位置、大小、字形與顏色，禁止晃動及變形；只讓小圖示、色塊或局部元素以「${animationOption}」方式動作。`, type: 'orange' }] : [])
+            ] : []),
             { label: '內容模式', value: getModeRules().rule, type: 'orange' },
-            { label: '指定用語', value: selections.contentMode === 'char_only' ? `依照「${selections.subject}」設計20種語意清楚、不重複的動作與表情，不放任何文字。` : getPhraseText(), type: 'orange' },
-            { label: '不足20句', value: selections.contentMode === 'char_only' || getPhraseArray().length === 20 ? '目前內容可直接依序製作20格。' : `目前指定${getPhraseArray().length}句；請依「${selections.subject}」補足至20句，新增內容不得與既有用語重複。`, type: 'blue' },
+            { label: '指定用語', value: getProduct().animated ? (selections.contentMode === 'char_only' ? `設計4個不同動畫，每個動畫5個連續畫格；順序為01–05、06–10、11–15、16–20。` : `四個動畫依序使用：${getPhraseArray().slice(0,4).map((t,i)=>`${i+1}.「${t}」`).join('；')}。每句文字在所屬5格中完全相同。`) : (selections.contentMode === 'char_only' ? `依照「${selections.subject}」設計20種語意清楚、不重複的動作與表情，不放任何文字。` : getPhraseText()), type: 'orange' },
+            { label: getProduct().animated ? '分鏡連續性' : '不足20句', value: getProduct().animated ? '同一組5格必須保持角色位置、比例、鏡位、服裝與文字完全一致，只讓動作循序變化；第5格需能自然銜接第1格循環播放。' : (selections.contentMode === 'char_only' || getPhraseArray().length === 20 ? '目前內容可直接依序製作20格。' : `目前指定${getPhraseArray().length}句；請依「${selections.subject}」補足至20句，新增內容不得與既有用語重複。`), type: 'blue' },
             { label: '文字正確', value: selections.contentMode === 'char_only' ? '禁止任何文字、字母、數字、符號、對話框與浮水印。' : '每格只放一句；指定文字必須逐字照抄，使用繁體中文，禁止改寫、錯字、漏字、增字、簡體字、重複、英文翻譯、emoji及【】符號。', type: 'blue' },
             { label: '語意配對', value: '每句用語必須搭配語意吻合且各不相同的表情、手勢與動作，不可出現文字與情緒矛盾。', type: 'blue' }
           ]
@@ -459,8 +564,9 @@
         {
           title: '[4. 版面與安全距離]',
           items: [
+            { label: '產品構圖', value: getProduct().emoji ? `${getEmojiLayout().label}，文字占比${textRatio}%。表情貼顯示很小，必須以粗大清楚文字及簡潔圖案為主，避免長句、細節裝飾與過多留白。` : '一般貼圖可使用半身或全身動作，表情、手勢與文字都必須清楚。', type: 'orange' },
             { label: '視覺置中', value: '每格主體保持視覺置中，可依動作與文字位置微調；禁止所有角色僵硬地位於完全相同位置。', type: 'blue' },
-            { label: '安全距離', value: '每格所有內容與四邊至少保留20px純色背景；文字不可遮臉、遮住重要動作或跨越隱形格界。', type: 'blue' },
+            { label: '安全距離', value: getProduct().emoji ? '主體盡量填滿正方形畫面，只保留極少的純色幕布安全距離；文字不可遮臉或跨格。' : '每格所有內容與四邊至少保留20px純色背景；文字不可遮臉、遮住重要動作或跨越隱形格界。', type: 'blue' },
             { label: '自然輪廓', value: '主角輪廓乾淨完整，可使用1～2像素的角色同色系深色描邊；禁止厚白色貼紙框、白色光暈及大片陰影。', type: 'blue' },
             { label: '文字系統', value: '全組使用一致字型、描邊粗細與3～5種協調配色交替；禁止20種完全隨機且互不協調的文字顏色。', type: 'blue' }
           ]
@@ -488,14 +594,14 @@
             { label: '數量核對', value: '確認正好5欄×4列＝20格，無缺格、重複格、合併格、跨格或實體格線。', type: 'blue' },
             { label: '角色核對', value: '確認20格角色設定與畫風完全一致，沒有多餘肢體、服裝變化或角色走樣。', type: 'blue' },
             { label: '文字核對', value: selections.contentMode === 'char_only' ? '確認20格完全沒有文字或符號。' : '由左至右、由上至下逐格核對繁體中文，確認每句正確、清楚、不重複且與表情吻合。', type: 'blue' },
-            { label: '輸出總結', value: `輸出一張2560×1664 PNG大圖；20格、背景${getKeyColor().hex}、無格線、無厚白框。`, type: 'orange' }
+            { label: '輸出總結', value: `輸出一張${getSourceSpec().w}×${getSourceSpec().h}px PNG大圖；20格、背景${getKeyColor().hex}、無格線、無厚白框。${getProduct().animated ? '每5格為一個連續動畫，共4組。' : ''}`, type: 'orange' }
           ]
         }
       ];
 
       const handleCopy = () => {
         const data = getPromptData();
-        let textToCopy = '請嚴格依照以下規格生成一張包含20個不同內容的LINE貼圖集。請先完整理解全部規則，再一次完成畫面；不要省略任何格子或自行更改指定文字。\n\n';
+        let textToCopy = `請嚴格依照以下規格生成${getProduct().label}所需的20格大圖。請先完整理解全部規則，再一次完成畫面；不要省略格子或自行更改指定文字。\n\n`;
         data.forEach(section => {
           textToCopy += `${section.title}\n`;
           section.items.forEach(item => {
@@ -559,7 +665,7 @@
                   <MessageSquare className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold tracking-wide text-rose-800">LINE 貼圖自動化助手</h1>
+                  <h1 className="text-2xl font-bold tracking-wide text-rose-800">LINE 貼圖與表情貼製作助手</h1>
                 </div>
               </div>
               <StepIndicator />
@@ -598,7 +704,39 @@
                     AI 提示詞大師
                   </h2>
 
+                  <div className="mb-8">
+                    <h3 className="text-lg font-semibold text-rose-700 mb-4">製作類型：</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {Object.entries(PRODUCT_TYPES).map(([id, product]) => (
+                        <button key={id} onClick={() => { setProductType(id); setProcessedImages([]); setIsSliced(false); setStartNumber(1); setMainIndex(null); setTabIndex(null); }} className={`p-4 rounded-xl border text-left transition-all ${productType === id ? 'bg-pink-500 text-white border-pink-500 shadow-md' : 'bg-pink-50/50 text-rose-700 border-pink-200 hover:bg-pink-100'}`}>
+                          <strong className="block">{product.label}</strong>
+                          <small className={productType === id ? 'text-pink-100' : 'text-rose-500'}>{product.note}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="space-y-8">
+                    {getProduct().emoji && (
+                      <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-5">
+                        <h3 className="text-lg font-semibold text-amber-900 mb-4">表情貼形式：</h3>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                          {Object.entries(EMOJI_LAYOUTS).map(([id, layout]) => (
+                            <button key={id} onClick={() => { setEmojiLayout(id); setTextRatio(layout.ratio); if (id === 'handwriting' || id === 'bold_text') handleSelect('contentMode','text_only'); if (id === 'character_text') handleSelect('contentMode','char_text'); }} className={`p-3 rounded-lg border text-left ${emojiLayout === id ? 'bg-amber-500 text-white border-amber-500 shadow-md' : 'bg-white text-amber-900 border-amber-200'}`}>
+                              <strong className="block text-sm">{layout.label}</strong><small className={emojiLayout === id ? 'text-amber-100' : 'text-amber-700'}>文字約{layout.ratio}%</small>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div><label className="block text-xs font-bold text-amber-900 mb-2">文字占比：{textRatio}%</label><input type="range" min="40" max="90" step="10" value={textRatio} onChange={(e)=>setTextRatio(Number(e.target.value))} className="w-full accent-amber-500" /></div>
+                          {(emojiLayout === 'handwriting' || emojiLayout === 'bold_text') && <div><label className="block text-xs font-bold text-amber-900 mb-2">文字筆觸</label><select value={handwritingStyle} onChange={(e)=>setHandwritingStyle(e.target.value)} className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm">{HANDWRITING_STYLES.map(x=><option key={x}>{x}</option>)}</select></div>}
+                          {(emojiLayout === 'icon_text' || emojiLayout === 'bold_text') && <div><label className="block text-xs font-bold text-amber-900 mb-2">輔助小圖示</label><select value={iconOption} onChange={(e)=>setIconOption(e.target.value)} className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm">{ICON_OPTIONS.map(x=><option key={x}>{x}</option>)}</select></div>}
+                          {getProduct().animated && <div><label className="block text-xs font-bold text-amber-900 mb-2">動畫方式</label><select value={animationOption} onChange={(e)=>setAnimationOption(e.target.value)} className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm">{ANIMATION_OPTIONS.map(x=><option key={x}>{x}</option>)}</select></div>}
+                        </div>
+                        <p className="mt-4 text-xs text-amber-800">建議每張1～4個中文字；超過4字時必須縮小，可能影響LINE對話框中的辨識度。</p>
+                      </div>
+                    )}
+
                     {/* 1. 內容模式選擇 */}
                     <div>
                       <h3 className="text-lg font-semibold text-rose-700 mb-4">1. 內容模式選擇：</h3>
@@ -674,6 +812,7 @@
                           <label className="block text-sm font-bold text-rose-700 mb-2">自訂20句用語（選填，以頓號、逗號或換行分隔）</label>
                           <textarea value={customPhrases} onChange={(e) => setCustomPhrases(e.target.value)} rows="3" placeholder="留白時使用預設主題；自行輸入時取前20句。" className="w-full rounded-lg border border-pink-200 bg-pink-50/40 px-4 py-3 text-sm outline-none focus:border-pink-400" />
                           <div className="mt-1 text-xs text-pink-500">目前輸入 {customPhrases.split(/[、,，\n]/).map(s => s.trim()).filter(Boolean).length} 句</div>
+                          {getProduct().emoji && customPhrases.split(/[、,，\n]/).map(s=>s.trim()).filter(Boolean).some(s=>s.length>4) && <div className="mt-2 text-xs font-bold text-amber-600">提醒：有用語超過4個字，縮成180×180後可能不夠清楚。</div>}
                         </div>
                       )}
                     </div>
@@ -726,7 +865,7 @@
                       <div className="bg-pink-400 rounded p-1 shadow-sm">
                         <CheckCircle2 className="w-5 h-5 text-white" />
                       </div>
-                      <h2 className="text-lg font-bold text-rose-800">20 格貼圖集 | Prompt 建議 (5x4)</h2>
+                      <h2 className="text-lg font-bold text-rose-800">{getProduct().label}｜20格提示詞（5×4）</h2>
                     </div>
                   </div>
                   
@@ -791,12 +930,16 @@
                 {!previewUrl && processedImages.length === 0 && (
                   <div className="bg-white rounded-xl border border-pink-100 p-8 md:p-12 flex flex-col items-center justify-center min-h-[500px] shadow-xl shadow-pink-100/50 max-w-4xl mx-auto">
                     <h2 className="text-2xl font-bold text-rose-800 mb-8">上傳您的貼圖原始檔</h2>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full mb-6">
+                      {Object.entries(PRODUCT_TYPES).map(([id, product]) => <button key={id} onClick={() => { setProductType(id); setStartNumber(1); }} className={`rounded-lg border px-3 py-2 text-xs font-bold ${productType === id ? 'bg-pink-500 text-white border-pink-500' : 'bg-white text-pink-600 border-pink-200'}`}>{product.label}</button>)}
+                    </div>
                     
                     <div className="bg-pink-50/50 border border-pink-100 rounded-xl p-6 w-full mb-8">
                       <h3 className="text-pink-600 font-bold mb-4 underline underline-offset-4 decoration-pink-300">圖片需要符合以下規格：</h3>
                       <ul className="space-y-3 text-sm text-rose-700 leading-relaxed font-medium">
                         <li>(1) 佈局：整體為 <span className="text-pink-700 font-bold">5 欄 × 4 列</span>，共 20 張貼圖。</li>
-                        <li>(2) 尺寸：總尺寸強烈建議為 <span className="text-pink-700 font-mono bg-pink-100 px-1.5 py-0.5 rounded font-bold">2560 × 1664 px</span>。</li>
+                        <li>(2) 尺寸：目前「{getProduct().label}」建議為 <span className="text-pink-700 font-mono bg-pink-100 px-1.5 py-0.5 rounded font-bold">{getSourceSpec().w} × {getSourceSpec().h} px</span>。</li>
+                        {getProduct().animated && <li>(3) 分鏡：每連續5格合成1個動畫，20格共輸出4個APNG。</li>}
                       </ul>
                     </div>
 
@@ -832,7 +975,7 @@
                     
                     <div 
                       className="relative w-full max-w-4xl mx-auto overflow-hidden bg-[#0f172a] rounded-lg border-2 border-slate-800/50 shadow-inner" 
-                      style={{ aspectRatio: '2560/1664' }}
+                      style={{ aspectRatio: `${getSourceSpec().w}/${getSourceSpec().h}` }}
                     >
                       <img 
                         src={previewUrl} 
@@ -894,7 +1037,7 @@
                         const col = i % 5;
                         const row = Math.floor(i / 5);
                         return (
-                          <div key={i} className="aspect-[512/416] w-full rounded border border-slate-700/50 overflow-hidden bg-slate-800 relative">
+                          <div key={i} className="w-full rounded border border-slate-700/50 overflow-hidden bg-slate-800 relative" style={{aspectRatio: `${getSourceSpec().cellW}/${getSourceSpec().cellH}`}}>
                             <div style={{
                               position: 'absolute',
                               width: '500%',
@@ -972,7 +1115,7 @@
                   <div className="bg-[#1e293b] rounded-xl border border-slate-700/50 p-6 md:p-8 shadow-xl max-w-6xl mx-auto">
                     <div className="flex justify-between items-center mb-6">
                       <h2 className="text-xl font-bold text-white flex items-center">
-                        <Wand2 className="w-6 h-6 mr-2 text-emerald-400" /> 去背完成，請選擇封面與分頁圖
+                        <Wand2 className="w-6 h-6 mr-2 text-emerald-400" /> 去背完成，請設定{getProduct().emoji ? '分頁圖' : '封面與分頁圖'}
                       </h2>
                       <button onClick={handleReset} className="text-sm text-slate-400 hover:text-white font-bold flex items-center transition-colors">
                         <RefreshCcw className="w-4 h-4 mr-1" /> 重做
@@ -990,13 +1133,21 @@
                             <Info className="w-5 h-5 mr-2" /> 下載前注意事項：
                           </div>
                           <ul className="text-sm text-slate-300 space-y-3 list-disc ml-6 leading-relaxed">
-                            <li>選擇 <span className="text-white font-bold border-b border-slate-500 pb-0.5">main / tab 封面圖</span>：點擊貼圖下方的按鈕設定。</li>
-                            <li>設定 <span className="text-white font-bold border-b border-slate-500 pb-0.5">起始編號</span>：如生第二組，請將起始編號改為 21。</li>
-                            <li className="text-emerald-400 font-medium mt-2">✨ 系統會自動將所有圖檔調整為 LINE 官方規範尺寸 (預留了 10px 安全邊距，不貼齊邊緣)。</li>
+                            <li>目前模式：<span className="text-white font-bold">{getProduct().label}</span>，{getProduct().note}。</li>
+                            <li>{getProduct().emoji ? '選擇Tab分頁圖。' : '選擇Main封面圖與Tab分頁圖。'}</li>
+                            <li>第二批起始編號請設為 <span className="text-white font-bold">{getProduct().animated ? '5' : '21'}</span>。</li>
+                            <li className="text-emerald-400 font-medium mt-2">系統會輸出{getProduct().outputW}×{getProduct().outputH}px，檔名使用{getProduct().digits}位數。</li>
                           </ul>
                         </div>
 
                         <div className="flex flex-col sm:flex-row gap-4">
+                          {getProduct().animated && (
+                            <div className="bg-[#0f172a] border border-slate-700 rounded-xl p-4 w-full sm:w-44 shadow-inner">
+                              <label className="text-xs font-bold text-slate-400">每格時間：{frameDelay}ms</label>
+                              <input type="range" min="80" max="500" step="20" value={frameDelay} onChange={(e)=>setFrameDelay(Number(e.target.value))} className="w-full accent-emerald-500 mt-2" />
+                              <div className="text-[10px] text-slate-500 mt-1">5格總長 {(frameDelay*5/1000).toFixed(1)}秒</div>
+                            </div>
+                          )}
                           <div className="bg-[#0f172a] border border-slate-700 rounded-xl p-4 flex flex-col justify-center w-full sm:w-32 shadow-inner">
                             <label className="text-xs font-bold text-slate-400 mb-2"># 起始編號</label>
                             <input
@@ -1019,13 +1170,26 @@
                       </div>
                     </div>
 
+                    {getProduct().animated && (
+                      <div className="mb-8">
+                        <h3 className="text-white font-bold mb-3">動畫預覽（每5格合成1個）</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {[0,1,2,3].map(group => <div key={group} className="bg-[#0f172a] rounded-lg p-3 border border-slate-700 text-center">
+                            <img src={processedImages[group*5+previewFrame]} className="w-full object-contain rounded" style={{aspectRatio:`${getProduct().outputW}/${getProduct().outputH}`}} />
+                            <div className="text-xs text-emerald-400 mt-2">動畫 {group+1}・畫格 {previewFrame+1}/5</div>
+                          </div>)}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
                       {processedImages.map((src, i) => (
                         <div key={i} className="bg-[#0f172a] rounded-lg p-3 border border-slate-800 flex flex-col group hover:border-slate-600 transition-colors">
                           
                           <div 
-                            className="w-full aspect-[370/320] rounded overflow-hidden relative border border-slate-800/50"
+                            className="w-full rounded overflow-hidden relative border border-slate-800/50"
                             style={{
+                              aspectRatio: `${getProduct().outputW}/${getProduct().outputH}`,
                               backgroundImage: `linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%)`,
                               backgroundSize: '16px 16px',
                               backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
@@ -1036,11 +1200,11 @@
                           </div>
 
                           <div className="text-center text-[11px] font-mono font-medium text-slate-400 my-2 bg-slate-800/80 py-1.5 rounded-md mx-1">
-                            {String((parseInt(startNumber) || 1) + i).padStart(2, '0')}.png
+                            {getProduct().animated ? `動畫${Math.floor(i/5)+1}・畫格${i%5+1}` : `${String((parseInt(startNumber) || 1) + i).padStart(getProduct().digits, '0')}.png`}
                           </div>
 
                           <div className="flex gap-1.5 mt-auto">
-                            <button
+                            {!getProduct().emoji && <button
                               onClick={() => setMainIndex(mainIndex === i ? null : i)}
                               className={`flex-1 flex flex-col sm:flex-row items-center justify-center py-2 rounded text-[10px] font-bold transition-all ${
                                 mainIndex === i
@@ -1049,7 +1213,7 @@
                               }`}
                             >
                               <Star className={`w-3.5 h-3.5 sm:mr-1 mb-1 sm:mb-0 ${mainIndex === i ? 'fill-emerald-400' : ''}`} /> Main
-                            </button>
+                            </button>}
                             <button
                               onClick={() => setTabIndex(tabIndex === i ? null : i)}
                               className={`flex-1 flex flex-col sm:flex-row items-center justify-center py-2 rounded text-[10px] font-bold transition-all ${
